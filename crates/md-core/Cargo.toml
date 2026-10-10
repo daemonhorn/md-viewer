@@ -1,0 +1,15 @@
+[package]
+name = "md-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ammonia = "4.2.1"
+comrak = "0.55.0"
+
+[dev-dependencies]
+insta = "1.49.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
