@@ -69,9 +69,8 @@ jobs:
           shell: sh
           run: |
             set -eux
-            pkg search -q webkit | sort | head -40   # diagnostics: real package names
             sudo pkg install -y rust pkgconf
-            sudo pkg install -y webkit2-gtk4 || sudo pkg install -y webkit2-gtk3 || sudo pkg install -y webkit2gtk4-gtk3
+            sudo pkg install -y webkit2-gtk_41
             cargo build --release --locked -p md-viewer
 
       - name: Package
