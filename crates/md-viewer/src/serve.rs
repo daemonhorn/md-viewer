@@ -58,12 +58,20 @@ pub fn mime_for(p: &Path) -> &'static str {
     }
 }
 
-/// Embedded third-party assets.
-/// TODO(bundling): vendor mermaid.min.js, katex.min.js, katex.min.css (+fonts) under
-/// assets/vendor/ (MIT licensed) and return them here via include_bytes!, ideally
-/// behind a cargo feature to keep the default binary small.
-fn bundled_asset(_name: &str) -> Option<(&'static str, &'static [u8])> {
-    None
+/// Embedded third-party assets, served under `/__mdv/vendor/`.
+///
+/// mermaid is compiled in by the default `mermaid` cargo feature; a lean build
+/// (`--no-default-features`) returns `None`, so diagram blocks stay as code.
+/// TODO(bundling): katex.min.js, katex.min.css (+fonts) for math.
+fn bundled_asset(name: &str) -> Option<(&'static str, &'static [u8])> {
+    match name {
+        #[cfg(feature = "mermaid")]
+        "mermaid.min.js" => Some((
+            "text/javascript; charset=utf-8",
+            include_bytes!("../../../assets/vendor/mermaid.min.js"),
+        )),
+        _ => None,
+    }
 }
 
 fn query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
@@ -172,7 +180,7 @@ mod tests {
         assert_eq!(handle(&mut s, "/%2e%2e/secret", "").status, 403);
         assert_eq!(handle(&mut s, "/missing.png", "").status, 404);
         assert_eq!(handle(&mut s, "/__mdv/style.css", "").status, 200);
-        assert_eq!(handle(&mut s, "/__mdv/vendor/mermaid.min.js", "").status, 404);
+        assert_eq!(handle(&mut s, "/__mdv/vendor/nope.js", "").status, 404);
     }
 
     #[test]
@@ -180,5 +188,34 @@ mod tests {
         let mut s = State { root: None, current: None, raw_default: false, theme: Theme::Auto };
         let r = handle(&mut s, "/", "");
         assert!(String::from_utf8(r.body).unwrap().contains("Drop a Markdown file"));
+    }
+
+    #[cfg(feature = "mermaid")]
+    #[test]
+    fn serves_bundled_mermaid() {
+        let (_d, mut s) = setup();
+        let r = handle(&mut s, "/__mdv/vendor/mermaid.min.js", "");
+        assert_eq!((r.status, r.mime), (200, "text/javascript; charset=utf-8"));
+        assert!(r.body.len() > 1_000_000, "mermaid bundle looks truncated");
+        let head = String::from_utf8_lossy(&r.body[r.body.len() - 200..]).into_owned();
+        assert!(head.contains("globalThis[\"mermaid\"]"), "bundle must export global mermaid");
+    }
+
+    #[cfg(not(feature = "mermaid"))]
+    #[test]
+    fn lean_build_has_no_mermaid() {
+        let (_d, mut s) = setup();
+        assert_eq!(handle(&mut s, "/__mdv/vendor/mermaid.min.js", "").status, 404);
+    }
+
+    #[test]
+    fn mermaid_script_only_requested_for_diagram_docs() {
+        let (d, mut s) = setup();
+        fs::write(d.join("root/d.md"), "```mermaid\ngraph TD; A-->B;\n```\n").unwrap();
+        let with = String::from_utf8(handle(&mut s, "/d.md", "").body).unwrap();
+        assert!(with.contains("data-mermaid=\"1\""));
+        assert!(with.contains("mermaid"), "diagram source must be present for the client renderer");
+        let without = String::from_utf8(handle(&mut s, "/a.md", "").body).unwrap();
+        assert!(!without.contains("data-mermaid=\"1\""));
     }
 }

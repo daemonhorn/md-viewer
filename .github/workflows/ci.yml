@@ -67,6 +67,15 @@ jobs:
           else
             cargo test --workspace --locked
           fi
+      - name: Lean build (no embedded mermaid)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test -p md-viewer --no-default-features --locked
+      - name: Mermaid bundle parse check
+        if: runner.os == 'Linux'
+        working-directory: tests/js
+        run: |
+          npm install --no-save --no-package-lock jsdom@24
+          node mermaid-parse.mjs
 
   msrv:
     name: MSRV 1.85 check
