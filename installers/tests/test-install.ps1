@@ -59,7 +59,7 @@ while ($i -lt $a.Count - 1) {
 $file = $a[$a.Count - 1]
 if ($iss -ne 'https://token.actions.githubusercontent.com') { [Console]::Error.WriteLine("bad issuer: $iss"); exit 1 }
 if ($id -ne $env:FAKE_COSIGN_IDENTITY) { [Console]::Error.WriteLine("identity mismatch: got $id"); exit 1 }
-$want = 'SIG ' + (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()
+$want = 'SIG ' + ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes($file))) -replace '-','').ToLowerInvariant()
 $have = ([IO.File]::ReadAllText($bundle)).Trim()
 if ($have -ne $want) { [Console]::Error.WriteLine('signature mismatch'); exit 1 }
 exit 0

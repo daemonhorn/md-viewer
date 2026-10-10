@@ -134,7 +134,7 @@ mod imp {
         if std::fs::metadata(dir)?.is_dir() {
             Ok(())
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "not a directory"))
+            Err(io::Error::other("not a directory"))
         }
     }
 
