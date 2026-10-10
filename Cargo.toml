@@ -14,3 +14,9 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# tao 0.37.1 fails to compile on FreeBSD/OpenBSD ("cannot find function `hit_test`");
+# fixed upstream by tauri-apps/tao#1356 (merged 2026-09-30) but not yet released.
+# Pinned to the merge commit. REMOVE this patch once tao > 0.37.1 is released.
+[patch.crates-io]
+tao = { git = "https://github.com/tauri-apps/tao", rev = "d19f4c12a0d881260a436d9ccf3e8f349c58e2a4" }

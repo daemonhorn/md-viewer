@@ -1020,6 +1020,7 @@ mod tests {
         assert_eq!(e.bin(), Path::new("/h/.local/bin/md-viewer"));
     }
 
+    #[cfg(unix)] // asserts POSIX paths in the Exec line
     #[test]
     fn fresh_install() {
         let f = fixture();
@@ -1324,6 +1325,7 @@ mod tests {
         assert_eq!(exec_quote("/a$b c"), "\"/a\\\\$b c\"");
     }
 
+    #[cfg(unix)] // asserts POSIX paths in the Exec line
     #[test]
     fn install_with_weird_home_writes_valid_exec() {
         let td = tempfile::tempdir().unwrap();
