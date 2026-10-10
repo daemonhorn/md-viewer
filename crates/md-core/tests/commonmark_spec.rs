@@ -24,7 +24,7 @@ const MIN_PASS_RATE: f64 = 0.95;
 /// allowed-tag differences cancel out. What remains is parser behavior.
 fn expected_through_sanitizer(html: &str) -> String {
     let mut b = ammonia::Builder::default();
-    b.add_tags(["details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span", "div"]);
+    b.add_tags(["details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span", "div", "mark", "nav"]);
     b.add_generic_attributes(["id", "class", "align", "dir", "lang", "title"]);
     b.add_tag_attributes("input", ["type", "checked", "disabled"]);
     b.add_tag_attributes("code", ["data-math-style"]);

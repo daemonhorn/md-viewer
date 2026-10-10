@@ -6,7 +6,7 @@ needs_mermaid: false
 needs_math: false
 ---
 <h1 id="glfm-misc">GLFM misc<a href="#glfm-misc" class="anchor" rel="noopener noreferrer"></a></h1>
-<p><a href="_TOC_" rel="noopener noreferrer">_TOC_</a></p>
+<nav class="toc"><ul><li><a href="#glfm-misc" rel="noopener noreferrer">GLFM misc</a></li></ul></nav>
 <p>Inline diff: {+ added +} and [- removed -].</p>
 <p>Reference: #123, !45, @user, ~label</p>
 <pre lang="suggestion:-0+0"><code>replacement

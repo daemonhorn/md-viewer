@@ -1,4 +1,12 @@
 - [x] completed
 - [ ] incomplete
 - [~] inapplicable
-- [-] also inapplicable
+- [-] also *inapplicable*
+
+```
+- [~] in code stays literal
+```
+
+- [~] loose one
+
+- [ ] loose two

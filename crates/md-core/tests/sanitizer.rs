@@ -81,3 +81,12 @@ fn math_and_mermaid_do_not_enable_script() {
     let h = html("$<script>alert(1)</script>$\n\n```mermaid\n<script>alert(1)</script>\n```\n");
     assert!(!h.contains("<script"), "{h}");
 }
+
+#[test]
+fn only_checkbox_inputs_survive() {
+    for src in ["<input type=text>", "<input type=password name=p>", "<input type=file>", "<input type=\"image\" src=x>", "<input>"] {
+        assert!(!html(src).contains("<input"), "{src:?}");
+    }
+    let h = html("<input type=checkbox checked>");
+    assert!(h.contains("type=\"checkbox\"") && h.contains("disabled"), "{h}");
+}

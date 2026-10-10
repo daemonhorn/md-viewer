@@ -1,11 +1,8 @@
 ---
 source: crates/md-core/tests/snapshots.rs
 ---
-front_matter: None
+front_matter: Some("title = \"TOML front matter\"")
 needs_mermaid: false
 needs_math: false
 ---
-<p>+++
-title = "TOML front matter"
-+++</p>
 <h1 id="body">Body<a href="#body" class="anchor" rel="noopener noreferrer"></a></h1>

@@ -1,0 +1,10 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<nav class="toc"><ul><li><a href="#alpha" rel="noopener noreferrer">Alpha</a><ul><li><a href="#beta" rel="noopener noreferrer">Beta</a></li></ul></li></ul></nav>
+<h1 id="alpha">Alpha<a href="#alpha" class="anchor" rel="noopener noreferrer"></a></h1>
+<h2 id="beta">Beta<a href="#beta" class="anchor" rel="noopener noreferrer"></a></h2>

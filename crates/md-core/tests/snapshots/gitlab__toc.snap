@@ -5,7 +5,11 @@ front_matter: Some("title: GitLab TOC")
 needs_mermaid: false
 needs_math: false
 ---
-<p><a href="_TOC_" rel="noopener noreferrer">_TOC_</a></p>
+<nav class="toc"><ul><li><a href="#one" rel="noopener noreferrer">One</a><ul><li><a href="#two" rel="noopener noreferrer">Two</a><ul><li><a href="#three" rel="noopener noreferrer">Three</a></li></ul></li><li><a href="#two-1" rel="noopener noreferrer">Two</a></li></ul></li><li><a href="#four-code" rel="noopener noreferrer">Four code</a></li></ul></nav>
 <h1 id="one">One<a href="#one" class="anchor" rel="noopener noreferrer"></a></h1>
 <h2 id="two">Two<a href="#two" class="anchor" rel="noopener noreferrer"></a></h2>
 <h3 id="three">Three<a href="#three" class="anchor" rel="noopener noreferrer"></a></h3>
+<h2 id="two-1">Two<a href="#two-1" class="anchor" rel="noopener noreferrer"></a></h2>
+<h1 id="four-code">Four <code>code</code><a href="#four-code" class="anchor" rel="noopener noreferrer"></a></h1>
+<pre><code>[[_TOC_]]
+</code></pre>

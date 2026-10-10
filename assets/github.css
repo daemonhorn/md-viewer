@@ -54,3 +54,9 @@ pre.raw{border-radius:0;margin:0;min-height:100vh;box-sizing:border-box;white-sp
 #find button{color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:4px;cursor:pointer}
 #modebadge{position:fixed;top:8px;right:12px;font-size:12px;color:var(--fg2);background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:1px 10px;opacity:.7}
 .drop{text-align:center;margin-top:20vh}.drop h1{border:0}
+/* dialect additions: GitLab TOC / inapplicable tasks, ==highlight==, extra callout types */
+nav.toc{border:1px solid var(--bd);border-radius:6px;padding:8px 16px;margin:0 0 16px;display:inline-block;min-width:16em}
+nav.toc ul{margin:0;padding-left:1.2em}
+nav.toc>ul{padding-left:0;list-style:none}
+.task-inapplicable{text-decoration:line-through;opacity:.6}
+mark{background:rgba(255,212,0,.35);color:inherit;padding:0 .15em;border-radius:2px}

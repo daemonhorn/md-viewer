@@ -8,6 +8,16 @@ needs_math: false
 <ul class="contains-task-list">
 <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> completed</li>
 <li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> incomplete</li>
-<li>[~] inapplicable</li>
-<li>[-] also inapplicable</li>
+<li class="task-list-item task-inapplicable"><input type="checkbox" class="task-list-item-checkbox task-inapplicable" disabled=""> <span class="task-inapplicable">inapplicable</span></li>
+<li class="task-list-item task-inapplicable"><input type="checkbox" class="task-list-item-checkbox task-inapplicable" disabled=""> <span class="task-inapplicable">also <em>inapplicable</em></span></li>
+</ul>
+<pre><code>- [~] in code stays literal
+</code></pre>
+<ul class="contains-task-list">
+<li class="task-list-item task-inapplicable"><input type="checkbox" class="task-list-item-checkbox task-inapplicable" disabled=""> 
+<p><span class="task-inapplicable">loose one</span></p>
+</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> 
+<p>loose two</p>
+</li>
 </ul>

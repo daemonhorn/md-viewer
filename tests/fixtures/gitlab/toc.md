@@ -9,3 +9,11 @@ title: GitLab TOC
 ## Two
 
 ### Three
+
+## Two
+
+# Four `code`
+
+```
+[[_TOC_]]
+```

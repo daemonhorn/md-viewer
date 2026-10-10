@@ -11,18 +11,31 @@ needs_math: false
 <p>Body of the note.</p>
 </div>
 <div class="markdown-alert markdown-alert-warning">
-<p class="markdown-alert-title">+ Foldable open</p>
+<p class="markdown-alert-title">Foldable open</p>
 <p>Content.</p>
 </div>
 <div class="markdown-alert markdown-alert-tip">
-<p class="markdown-alert-title">- Foldable closed</p>
+<p class="markdown-alert-title">Foldable closed</p>
 <p>Content.</p>
 </div>
+<div class="markdown-alert markdown-alert-quote">
+<p class="markdown-alert-title">Quote</p>
+<p>Nested</p>
+<div class="markdown-alert markdown-alert-info">
+<p class="markdown-alert-title">inner</p>
+<p>text</p>
+</div>
+</div>
+<div class="markdown-alert markdown-alert-faq">
+<p class="markdown-alert-title">Faq</p>
+<p>Empty title, folded.</p>
+</div>
+<div class="markdown-alert markdown-alert-todo">
+<p class="markdown-alert-title">Todo</p>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> a task in a callout</li>
+</ul>
+</div>
 <blockquote>
-<p>[!quote]
-Nested</p>
-<blockquote>
-<p>[!info] inner
-text</p>
-</blockquote>
+<p>a plain quote with [!bracket] inside</p>
 </blockquote>
