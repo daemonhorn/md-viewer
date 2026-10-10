@@ -1,0 +1,9 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="emoji-shortcodes">Emoji shortcodes<a href="#emoji-shortcodes" class="anchor" rel="noopener noreferrer"></a></h1>
+<p>🎉 👍 🚀 😄 :not_a_real_emoji:</p>

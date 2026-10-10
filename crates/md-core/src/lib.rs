@@ -87,7 +87,8 @@ pub fn render(src: &str) -> Rendered {
     let raw = markdown_to_html(body, &options());
     let html = sanitizer().clean(&raw).to_string();
     Rendered {
-        needs_mermaid: html.contains("language-mermaid"),
+        // github_pre_lang renders `<pre lang="mermaid">`; also accept the class form.
+        needs_mermaid: html.contains("lang=\"mermaid\"") || html.contains("language-mermaid"),
         needs_math: html.contains("data-math-style"),
         html,
         front_matter,
@@ -118,6 +119,12 @@ mod tests {
         assert_eq!(r.front_matter.as_deref(), Some("title: x"));
         assert!(r.html.contains("<h1"));
         assert!(!r.html.contains("title: x"));
+    }
+
+    #[test]
+    fn mermaid_detected() {
+        assert!(render("```mermaid\ngraph TD\n```\n").needs_mermaid);
+        assert!(!render("```rust\nfn main(){}\n```\n").needs_mermaid);
     }
 
     #[test]

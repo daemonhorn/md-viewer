@@ -1,0 +1,28 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="callouts">Callouts<a href="#callouts" class="anchor" rel="noopener noreferrer"></a></h1>
+<div class="markdown-alert markdown-alert-note">
+<p class="markdown-alert-title">Title here</p>
+<p>Body of the note.</p>
+</div>
+<div class="markdown-alert markdown-alert-warning">
+<p class="markdown-alert-title">+ Foldable open</p>
+<p>Content.</p>
+</div>
+<div class="markdown-alert markdown-alert-tip">
+<p class="markdown-alert-title">- Foldable closed</p>
+<p>Content.</p>
+</div>
+<blockquote>
+<p>[!quote]
+Nested</p>
+<blockquote>
+<p>[!info] inner
+text</p>
+</blockquote>
+</blockquote>

@@ -1,0 +1,13 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="多语言--unicode">多语言 / Unicode<a href="#多语言--unicode" class="anchor" rel="noopener noreferrer"></a></h1>
+<p>日本語のテキスト。<strong>太字</strong>と<code>コード</code>。中文段落，包含标点。한국어 문장입니다.</p>
+<p>مرحبا بالعالم — هذا نص عربي من اليمين إلى اليسار.</p>
+<p>שלום עולם</p>
+<p>Emoji: 😀 👨‍👩‍👧‍👦 🇯🇵 ❤️ é combining: é</p>
+<h2 id="見出し-id">見出し {#id}<a href="#見出し-id" class="anchor" rel="noopener noreferrer"></a></h2>

@@ -1,0 +1,52 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<table>
+<thead>
+<tr>
+<th align="right">Right</th>
+<th align="left">Left</th>
+<th>Default</th>
+<th align="center">Center</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="right">12</td>
+<td align="left">12</td>
+<td>12</td>
+<td align="center">12</td>
+</tr>
+<tr>
+<td align="right">123</td>
+<td align="left">123</td>
+<td>123</td>
+<td align="center">123</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Name</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>x</td>
+<td>1</td>
+</tr>
+<tr>
+<td>y</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>Pipe in cell: | a | b |
+|---|
+| c | d |</p>

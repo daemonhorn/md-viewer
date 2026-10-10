@@ -1,0 +1,11 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<p><del>Hi</del> Hello, world!</p>
+
+<p>This ~~has a</p>
+<p>new paragraph~~.</p>

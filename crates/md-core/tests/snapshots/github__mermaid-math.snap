@@ -1,0 +1,19 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: true
+needs_math: true
+---
+<h1 id="diagrams-and-math">Diagrams and math<a href="#diagrams-and-math" class="anchor" rel="noopener noreferrer"></a></h1>
+<pre lang="mermaid"><code>graph TD
+  A[Start] --&gt; B{Is it?}
+  B --&gt;|Yes| C[OK]
+</code></pre>
+<p>Inline math <span data-math-style="inline">E = mc^2</span> and a block:</p>
+<p><span data-math-style="display">
+\int_0^1 x^2 \, dx = \frac{1}{3}
+</span></p>
+<p>Code math: <code data-math-style="inline">a^2 + b^2 = c^2</code></p>
+<pre lang="math"><code>\sum_{i=1}^{n} i
+</code></pre>

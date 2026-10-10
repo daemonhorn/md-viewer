@@ -1,0 +1,12 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="relative-links">Relative links<a href="#relative-links" class="anchor" rel="noopener noreferrer"></a></h1>
+<p><a href="other.md" rel="noopener noreferrer">sibling</a> <a href="docs/guide.md#section" rel="noopener noreferrer">sub</a> <a href="../up.md" rel="noopener noreferrer">parent</a> <a href="#relative-links" rel="noopener noreferrer">anchor</a></p>
+<p><img src="images/pic.png" alt="local"> <img src="../pic.svg" alt="up"></p>
+<p><a href="/root/file.md" rel="noopener noreferrer">abs path</a> <a href="https://example.com/a.md" rel="noopener noreferrer">ext</a> <a href="mailto:a@b.c" rel="noopener noreferrer">mail</a> <a href="tel:+123" rel="noopener noreferrer">tel</a></p>
+<img src="images/raw.png" alt="raw">

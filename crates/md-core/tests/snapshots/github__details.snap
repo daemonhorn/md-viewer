@@ -1,0 +1,19 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="details">Details<a href="#details" class="anchor" rel="noopener noreferrer"></a></h1>
+<details>
+<summary>Click to expand</summary>
+<p>Hidden <strong>markdown</strong> content.</p>
+<pre lang="rust"><code>fn main() {}
+</code></pre>
+</details>
+<details open="">
+<summary>Open by default</summary>
+<p>Visible.</p>
+</details>
+<p>Press <kbd>Ctrl</kbd>+<kbd>C</kbd>. H<sub>2</sub>O and x<sup>2</sup>.</p>

@@ -1,0 +1,11 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<blockquote>
+<p>This is a multiline blockquote.</p>
+<p>It spans paragraphs.</p>
+</blockquote>

@@ -1,0 +1,38 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<p><a href="http://www.commonmark.org" rel="noopener noreferrer">www.commonmark.org</a></p>
+
+<p>Visit <a href="http://www.commonmark.org/help" rel="noopener noreferrer">www.commonmark.org/help</a> for more information.</p>
+
+<p>Visit <a href="http://www.commonmark.org" rel="noopener noreferrer">www.commonmark.org</a>.</p>
+<p>Visit <a href="http://www.commonmark.org/a.b" rel="noopener noreferrer">www.commonmark.org/a.b</a>.</p>
+
+<p><a href="http://www.google.com/search?q=Markup+(business)" rel="noopener noreferrer">www.google.com/search?q=Markup+(business)</a></p>
+<p><a href="http://www.google.com/search?q=Markup+(business)" rel="noopener noreferrer">www.google.com/search?q=Markup+(business)</a>))</p>
+<p>(<a href="http://www.google.com/search?q=Markup+(business)" rel="noopener noreferrer">www.google.com/search?q=Markup+(business)</a>)</p>
+<p>(<a href="http://www.google.com/search?q=Markup+(business)" rel="noopener noreferrer">www.google.com/search?q=Markup+(business)</a></p>
+
+<p><a href="http://www.google.com/search?q=(business))+ok" rel="noopener noreferrer">www.google.com/search?q=(business))+ok</a></p>
+
+<p><a href="http://www.google.com/search?q=commonmark&amp;hl=en" rel="noopener noreferrer">www.google.com/search?q=commonmark&amp;hl=en</a></p>
+<p><a href="http://www.google.com/search?q=commonmark" rel="noopener noreferrer">www.google.com/search?q=commonmark</a>&amp;hl;</p>
+
+<p><a href="http://www.commonmark.org/he" rel="noopener noreferrer">www.commonmark.org/he</a>&lt;lp</p>
+
+<p><a href="http://commonmark.org" rel="noopener noreferrer">http://commonmark.org</a></p>
+<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)" rel="noopener noreferrer">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>
+<p>Anonymous FTP is available at <a rel="noopener noreferrer">ftp://foo.bar.baz</a>.</p>
+
+<p><a href="mailto:foo@bar.baz" rel="noopener noreferrer">foo@bar.baz</a></p>
+
+<p>hello@mail+xyz.example isn't valid, but <a href="mailto:hello+xyz@mail.example" rel="noopener noreferrer">hello+xyz@mail.example</a> is.</p>
+
+<p><a href="mailto:a.b-c_d@a.b" rel="noopener noreferrer">a.b-c_d@a.b</a></p>
+<p><a href="mailto:a.b-c_d@a.b" rel="noopener noreferrer">a.b-c_d@a.b</a>.</p>
+<p>a.b-c_d@a.b-</p>
+<p>a.b-c_d@a.b_</p>

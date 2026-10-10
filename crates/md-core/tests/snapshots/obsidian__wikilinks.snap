@@ -1,0 +1,10 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="wikilinks">Wikilinks<a href="#wikilinks" class="anchor" rel="noopener noreferrer"></a></h1>
+<p>See <a href="Other%20Note" rel="noopener noreferrer">Other Note</a>, <a href="Other%20Note" rel="noopener noreferrer">an alias</a>, <a href="Note#Heading" rel="noopener noreferrer">Note#Heading</a> and ![[embedded.png]].</p>
+<p>Tags: #tag #nested/tag ==highlight== %%comment%%</p>

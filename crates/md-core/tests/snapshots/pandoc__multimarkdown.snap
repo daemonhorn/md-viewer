@@ -1,0 +1,19 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<p>Title: MMD Doc
+Author: Someone</p>
+<h1 id="heading-custom-id">Heading {#custom-id}<a href="#heading-custom-id" class="anchor" rel="noopener noreferrer"></a></h1>
+<p>Text with a footnote<sup class="footnote-ref"><a href="#fn-f" id="fnref-f" rel="noopener noreferrer">1</a></sup> and a citation [#cite].</p>
+<p>H<sub>2</sub>O and x<sup>2</sup> and <del>del</del>.</p>
+<section class="footnotes">
+<ol>
+<li id="fn-f">
+<p>Footnote text. <a href="#fnref-f" class="footnote-backref" rel="noopener noreferrer">↩</a></p>
+</li>
+</ol>
+</section>

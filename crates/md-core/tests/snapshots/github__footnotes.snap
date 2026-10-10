@@ -1,0 +1,20 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="footnotes">Footnotes<a href="#footnotes" class="anchor" rel="noopener noreferrer"></a></h1>
+<p>Here is a footnote reference<sup class="footnote-ref"><a href="#fn-1" id="fnref-1" rel="noopener noreferrer">1</a></sup> and another<sup class="footnote-ref"><a href="#fn-note" id="fnref-note" rel="noopener noreferrer">2</a></sup>.</p>
+<section class="footnotes">
+<ol>
+<li id="fn-1">
+<p>The first footnote. <a href="#fnref-1" class="footnote-backref" rel="noopener noreferrer">↩</a></p>
+</li>
+<li id="fn-note">
+<p>A named footnote
+with a continuation line. <a href="#fnref-note" class="footnote-backref" rel="noopener noreferrer">↩</a></p>
+</li>
+</ol>
+</section>

@@ -1,0 +1,32 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="misc-github">Misc GitHub<a href="#misc-github" class="anchor" rel="noopener noreferrer"></a></h1>
+<p><del>strike</del> and <strong>bold</strong> and <em>em</em> and <code>code</code>.</p>
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> done</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> todo</li>
+</ul>
+<p><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> and <a href="http://www.example.org" rel="noopener noreferrer">www.example.org</a> and <a href="mailto:user@example.com" rel="noopener noreferrer">user@example.com</a></p>
+<table>
+<thead>
+<tr>
+<th align="left">Left</th>
+<th align="center">Center</th>
+<th align="right">Right</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">a</td>
+<td align="center">b</td>
+<td align="right">c</td>
+</tr>
+</tbody>
+</table>
+<p>Line one<br>
+hard break above.</p>

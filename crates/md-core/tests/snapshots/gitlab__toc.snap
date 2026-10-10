@@ -1,0 +1,11 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: Some("title: GitLab TOC")
+needs_mermaid: false
+needs_math: false
+---
+<p><a href="_TOC_" rel="noopener noreferrer">_TOC_</a></p>
+<h1 id="one">One<a href="#one" class="anchor" rel="noopener noreferrer"></a></h1>
+<h2 id="two">Two<a href="#two" class="anchor" rel="noopener noreferrer"></a></h2>
+<h3 id="three">Three<a href="#three" class="anchor" rel="noopener noreferrer"></a></h3>

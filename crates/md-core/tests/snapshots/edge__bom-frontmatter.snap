@@ -1,0 +1,8 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: Some("title: bom")
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="bom-doc">BOM doc<a href="#bom-doc" class="anchor" rel="noopener noreferrer"></a></h1>

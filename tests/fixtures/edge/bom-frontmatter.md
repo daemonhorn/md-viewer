@@ -1,0 +1,4 @@
+﻿---
+title: bom
+---
+# BOM doc

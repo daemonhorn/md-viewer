@@ -1,0 +1,15 @@
+# CommonMark examples that intentionally differ (GFM/GitLab/Obsidian extensions). One number per line.
+24 # github_pre_lang: <pre lang=..> instead of class=language-..
+34 # github_pre_lang
+96 # front matter: leading --- block is extracted as YAML
+98 # front matter extraction
+142 # github_pre_lang
+143 # github_pre_lang
+144 # github_pre_lang
+146 # github_pre_lang
+559 # wikilinks extension: [[x]] becomes a link
+590 # wikilinks extension
+602 # autolink extension
+608 # autolink extension
+611 # GFM autolink extension (bare URL)
+612 # GFM autolink extension (bare email)

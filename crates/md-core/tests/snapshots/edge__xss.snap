@@ -1,0 +1,28 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<h1 id="xss-payloads">XSS payloads<a href="#xss-payloads" class="anchor" rel="noopener noreferrer"></a></h1>
+
+<img src="x">
+<p><a rel="noopener noreferrer">js link</a></p>
+<p><a rel="noopener noreferrer">md js</a></p>
+<p><a rel="noopener noreferrer">md data</a></p>
+<p><a rel="noopener noreferrer">mixed case</a></p>
+<p><img alt="img js"></p>
+
+<p> </p>
+<p></p>
+
+<div>click</div>
+<input type="text">go
+
+
+
+<details open=""><summary>x</summary></details>
+<p><a rel="noopener noreferrer">entity</a></p>
+<p></p>
+<p><a href="https://example.com" rel="noopener noreferrer">tabnab</a></p>

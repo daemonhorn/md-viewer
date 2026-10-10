@@ -1,0 +1,13 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> completed</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> incomplete</li>
+<li>[~] inapplicable</li>
+<li>[-] also inapplicable</li>
+</ul>

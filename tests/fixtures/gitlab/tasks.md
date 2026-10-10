@@ -1,0 +1,4 @@
+- [x] completed
+- [ ] incomplete
+- [~] inapplicable
+- [-] also inapplicable

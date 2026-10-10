@@ -1,0 +1,21 @@
+---
+source: crates/md-core/tests/snapshots.rs
+---
+front_matter: None
+needs_mermaid: false
+needs_math: false
+---
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> foo</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> bar</li>
+</ul>
+
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> foo
+<ul class="contains-task-list">
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> bar</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" checked="" disabled=""> baz</li>
+</ul>
+</li>
+<li class="task-list-item"><input type="checkbox" class="task-list-item-checkbox" disabled=""> bim</li>
+</ul>
