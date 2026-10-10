@@ -5,7 +5,7 @@ members = ["crates/md-core", "crates/md-install", "crates/md-viewer"]
 [workspace.package]
 version = "0.1.0-beta1"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "BSD-2-Clause"
 repository = "https://github.com/daemonhorn/md-viewer"
 

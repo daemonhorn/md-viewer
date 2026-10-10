@@ -136,6 +136,5 @@ gh attestation verify md-viewer-0.1.0-x86_64-unknown-linux-gnu.tar.gz \
 - All third-party actions are pinned by commit SHA; Dependabot proposes updates.
 - Release builds use a pinned Rust toolchain (`RUST_VERSION`) and no
   `rust-cache`, so a poisoned cache cannot reach a release. CI still checks the
-  MSRV (1.85) separately.
-- `cargo deny` ignores in `deny.toml` carry a reason and a removal condition;
-  RUSTSEC-2026-0009 (`time`) can be dropped once the MSRV is raised to 1.88.
+  MSRV (1.88) separately.
+- `cargo deny` ignores in `deny.toml` carry a reason and a removal condition.

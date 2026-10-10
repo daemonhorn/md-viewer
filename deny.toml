@@ -12,13 +12,6 @@ yanked = "deny"
 # Every ignore needs a reason and a removal condition. Do not add ignores for
 # exploitable vulnerabilities in code paths this project reaches.
 ignore = [
-    # RUSTSEC-2026-0009 (time <0.3.47, RFC 2822 parsing stack exhaustion).
-    # time is pulled in only by wry -> cookie and by syntect -> plist; neither
-    # parses attacker-controlled RFC 2822 dates. The fix (time >= 0.3.47)
-    # requires rustc 1.88, but the workspace MSRV is 1.85, so `cargo update -p
-    # time` would break the MSRV job. REMOVE this ignore (and run `cargo update
-    # -p time`) when the MSRV is raised to >= 1.88.
-    { id = "RUSTSEC-2026-0009", reason = "unreachable RFC 2822 parsing; fix needs rustc 1.88 > MSRV 1.85" },
     # RUSTSEC-2025-0141 bincode 1.x is "unmaintained" (no vulnerability), used
     # by syntect for its bundled syntax dumps. Remove when syntect drops it.
     { id = "RUSTSEC-2025-0141", reason = "unmaintained only (no vulnerability); transitive via syntect" },
