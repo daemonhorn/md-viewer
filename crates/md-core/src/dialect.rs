@@ -87,7 +87,7 @@ fn embed_markdown(inner: &str) -> Option<String> {
         let href = pct(path);
         let size = alias.and_then(|a| {
             let (w, h) = a.split_once('x').unwrap_or((a, ""));
-            (!w.is_empty() && w.bytes().all(|b| b.is_ascii_digit()) && h.bytes().all(|b| b.is_ascii_digit())).then(|| (w, h))
+            (!w.is_empty() && w.bytes().all(|b| b.is_ascii_digit()) && h.bytes().all(|b| b.is_ascii_digit())).then_some((w, h))
         });
         if let Some((w, h)) = size {
             let hattr = if h.is_empty() { String::new() } else { format!(" height=\"{h}\"") };

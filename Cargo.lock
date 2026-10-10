@@ -1563,7 +1563,7 @@ dependencies = [
 
 [[package]]
 name = "md-core"
-version = "0.1.0"
+version = "0.1.0-beta1"
 dependencies = [
  "ammonia",
  "comrak",
@@ -1574,7 +1574,7 @@ dependencies = [
 
 [[package]]
 name = "md-install"
-version = "0.1.0"
+version = "0.1.0-beta1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "md-viewer"
-version = "0.1.0"
+version = "0.1.0-beta1"
 dependencies = [
  "clap",
  "md-core",

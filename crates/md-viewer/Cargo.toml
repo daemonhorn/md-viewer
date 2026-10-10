@@ -14,8 +14,8 @@ mermaid = []
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
-md-core = { version = "0.1.0", path = "../md-core" }
-md-install = { version = "0.1.0", path = "../md-install" }
+md-core = { version = "0.1.0-beta1", path = "../md-core" }
+md-install = { version = "0.1.0-beta1", path = "../md-install" }
 notify = "8.2.0"
 open = "5.4.4"
 percent-encoding = "2.3.2"

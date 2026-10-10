@@ -15,6 +15,7 @@ ignore = []
 version = 2
 allow = [
     "MIT",
+    "MITNFA", # fmt2io (via comrak): MIT without the no-false-attribs-clause restrictions on use
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
