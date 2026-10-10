@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/md-core"]
+members = ["crates/md-core", "crates/md-install", "crates/md-viewer"]
 
 [workspace.package]
 version = "0.1.0"
