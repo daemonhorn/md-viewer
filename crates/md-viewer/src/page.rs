@@ -37,7 +37,19 @@ pub fn escape_html(s: &str) -> String {
     o
 }
 
-const FIND_BAR: &str = r#"<div id="find" hidden><input type="text" placeholder="Find (Enter / Shift+Enter)" aria-label="Find"><button class="prev" title="Previous">&uarr;</button><button class="next" title="Next">&darr;</button></div>"#;
+/// Element ids owned by the UI. Document content can contain arbitrary ids, so
+/// everything the app inserts uses the reserved `mdv-` prefix (app.js also ignores
+/// matches inside the document article).
+#[cfg(test)]
+pub const UI_IDS: [&str; 5] = [
+    "mdv-layout",
+    "mdv-toc",
+    "mdv-main",
+    "mdv-find",
+    "mdv-modebadge",
+];
+
+const FIND_BAR: &str = r#"<div id="mdv-find" hidden><input type="text" placeholder="Find (Enter / Shift+Enter)" aria-label="Find"><button class="mdv-prev" title="Previous">&uarr;</button><button class="mdv-next" title="Next">&darr;</button></div>"#;
 
 fn shell(title: &str, theme: Theme, mode: &str, flags: &str, body: &str) -> String {
     format!(
@@ -69,7 +81,7 @@ pub fn rendered_page(title: &str, r: &Rendered, theme: Theme) -> String {
         if r.needs_math { " data-math=\"1\"" } else { "" }
     );
     let body = format!(
-        "<div id=\"layout\"><nav id=\"toc\" hidden aria-label=\"Contents\"></nav><div id=\"main\"><article class=\"markdown-body\">\n{fm}{}\n</article></div></div>",
+        "<div id=\"mdv-layout\"><nav id=\"mdv-toc\" hidden aria-label=\"Contents\"></nav><div id=\"mdv-main\"><article class=\"markdown-body\">\n{fm}{}\n</article></div></div>",
         r.html
     );
     shell(title, theme, "rendered", &flags, &body)
@@ -78,7 +90,7 @@ pub fn rendered_page(title: &str, r: &Rendered, theme: Theme) -> String {
 /// Raw source view.
 pub fn raw_page(title: &str, src: &str, theme: Theme) -> String {
     let body = format!(
-        "<div id=\"modebadge\">raw (press r)</div><pre class=\"raw\"><code>{}</code></pre>",
+        "<div id=\"mdv-modebadge\">raw (press r)</div><pre class=\"raw\"><code>{}</code></pre>",
         escape_html(src)
     );
     shell(title, theme, "raw", "", &body)

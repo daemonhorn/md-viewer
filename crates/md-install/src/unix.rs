@@ -96,6 +96,28 @@ pub struct State {
     /// mime type -> default handler that was replaced (`None` = there was none).
     /// Only contains mime types for which this installer set the default.
     pub prior_defaults: BTreeMap<String, Option<String>>,
+    /// mime type -> the complete previous `mimeapps.list` value (e.g.
+    /// `a.desktop;b.desktop;`), recorded when the file had one, so uninstall
+    /// restores the whole list rather than only the first handler.
+    #[serde(default)]
+    pub prior_lists: BTreeMap<String, String>,
+    /// Size and FNV-1a hash of the binary we installed; uninstall only
+    /// deletes `bin` while it still matches (absent in older records).
+    #[serde(default)]
+    pub bin_len: Option<u64>,
+    #[serde(default)]
+    pub bin_hash: Option<String>,
+}
+
+/// 64-bit FNV-1a: a dependency-free content fingerprint (identity check, not
+/// a security measure).
+pub fn fnv1a_hex(data: &[u8]) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in data {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
 }
 
 pub fn load_state(env: &UnixEnv) -> Option<State> {
@@ -109,6 +131,15 @@ pub trait MimeDb {
     /// Is the `xdg-mime` tool present (otherwise a file fallback is used)?
     fn has_xdg_mime(&self) -> bool;
     fn query_default(&self, mime: &str) -> Result<Option<String>>;
+    /// The complete user-level handler list for `mime` as stored (e.g.
+    /// `a.desktop;b.desktop;`), if the backend can see it.
+    fn query_list(&self, mime: &str) -> Result<Option<String>> {
+        self.query_default(mime)
+    }
+    /// Restore a value previously returned by [`MimeDb::query_list`] verbatim.
+    fn set_list(&self, mime: &str, list: &str) -> Result<()> {
+        self.set_default(mime, list)
+    }
     fn set_default(&self, mime: &str, desktop_id: &str) -> Result<()>;
     fn unset_default(&self, mime: &str) -> Result<()>;
     /// Run update-desktop-database / update-mime-database when available;
@@ -163,6 +194,13 @@ impl MimeDb for SystemMime {
         }
         let text = fs::read_to_string(self.mimeapps()).unwrap_or_default();
         Ok(mimeapps_get(&text, mime))
+    }
+    fn query_list(&self, mime: &str) -> Result<Option<String>> {
+        let text = fs::read_to_string(self.mimeapps()).unwrap_or_default();
+        Ok(mimeapps_get_list(&text, mime))
+    }
+    fn set_list(&self, mime: &str, list: &str) -> Result<()> {
+        edit_mimeapps(&self.mimeapps(), |t| mimeapps_set_list(t, mime, list))
     }
     fn set_default(&self, mime: &str, desktop_id: &str) -> Result<()> {
         if self.has_xdg_mime() {
@@ -248,8 +286,9 @@ pub fn which(cmd: &str, path_var: &str) -> bool {
 
 const DEFAULTS: &str = "[Default Applications]";
 
-/// First handler listed for `mime` in the `[Default Applications]` section.
-pub fn mimeapps_get(text: &str, mime: &str) -> Option<String> {
+/// Raw value (everything after `=`, trimmed) of `mime` in `[Default
+/// Applications]`: the whole `a;b;` list.
+pub fn mimeapps_get_list(text: &str, mime: &str) -> Option<String> {
     let mut in_sec = false;
     for line in text.lines() {
         let l = line.trim();
@@ -258,16 +297,21 @@ pub fn mimeapps_get(text: &str, mime: &str) -> Option<String> {
         } else if in_sec {
             if let Some((k, v)) = l.split_once('=') {
                 if k.trim() == mime {
-                    return v
-                        .split(';')
-                        .map(str::trim)
-                        .find(|s| !s.is_empty())
-                        .map(String::from);
+                    return Some(v.trim().to_string());
                 }
             }
         }
     }
     None
+}
+
+/// First handler listed for `mime` in the `[Default Applications]` section.
+pub fn mimeapps_get(text: &str, mime: &str) -> Option<String> {
+    mimeapps_get_list(text, mime)?
+        .split(';')
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(String::from)
 }
 
 /// Remove `mime` from `[Default Applications]` (other sections untouched).
@@ -291,42 +335,117 @@ pub fn mimeapps_unset(text: &str, mime: &str) -> String {
     out
 }
 
-/// Set `mime=desktop;` in `[Default Applications]`, creating section/line.
-pub fn mimeapps_set(text: &str, mime: &str, desktop: &str) -> String {
-    let base = mimeapps_unset(text, mime);
-    let entry = format!("{mime}={desktop};");
+/// Set `mime=<list>` verbatim in `[Default Applications]`: replaces the
+/// existing line in place, else adds it (creating the section if needed).
+pub fn mimeapps_set_list(text: &str, mime: &str, list: &str) -> String {
+    let entry = format!("{mime}={list}");
+    let mut in_sec = false;
     let mut out = String::new();
     let mut done = false;
-    for line in base.lines() {
+    let mut have_section = false;
+    for line in text.lines() {
+        let l = line.trim();
+        if l.starts_with('[') {
+            in_sec = l == DEFAULTS;
+            have_section |= in_sec;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if in_sec
+            && l.split_once('=')
+                .map(|(k, _)| k.trim() == mime)
+                .unwrap_or(false)
+        {
+            if !done {
+                out.push_str(&entry);
+                out.push('\n');
+                done = true;
+            }
+            continue; // also drops duplicate keys
+        }
         out.push_str(line);
         out.push('\n');
-        if !done && line.trim() == DEFAULTS {
-            out.push_str(&entry);
-            out.push('\n');
-            done = true;
-        }
     }
-    if !done {
-        if !out.is_empty() && !out.ends_with("\n\n") {
-            out.push('\n');
+    if done {
+        return out;
+    }
+    if have_section {
+        // insert right after the (first) section header
+        let mut res = String::new();
+        let mut ins = false;
+        for line in out.lines() {
+            res.push_str(line);
+            res.push('\n');
+            if !ins && line.trim() == DEFAULTS {
+                res.push_str(&entry);
+                res.push('\n');
+                ins = true;
+            }
         }
-        out.push_str(DEFAULTS);
-        out.push('\n');
-        out.push_str(&entry);
+        return res;
+    }
+    if !out.is_empty() && !out.ends_with("\n\n") {
         out.push('\n');
     }
+    out.push_str(DEFAULTS);
+    out.push('\n');
+    out.push_str(&entry);
+    out.push('\n');
     out
+}
+
+/// Set `mime=desktop;` in `[Default Applications]`, creating section/line.
+pub fn mimeapps_set(text: &str, mime: &str, desktop: &str) -> String {
+    mimeapps_set_list(text, mime, &format!("{desktop};"))
 }
 
 // -------------------------------------------------------- file contents
 
+/// Encode one executable path as the program word of a Desktop Entry `Exec=`
+/// value (Desktop Entry spec, "The Exec key").
+///
+/// Two layers apply, in this order when *reading*: the generic string escapes
+/// (`\\` -> `\`, `\n`, ...), then the Exec quoting rules. So when *writing* we
+/// first apply the Exec rules (quote when a reserved character is present;
+/// inside quotes escape `"`, backtick, `$` and `\` with a backslash; `%` is
+/// always `%%`), then double every backslash for the string layer.
+pub fn exec_quote(arg: &str) -> String {
+    const RESERVED: &str = " \t\n\"'\\><~|&;$*?#()`";
+    let quote = arg.is_empty() || arg.chars().any(|c| RESERVED.contains(c));
+    let mut s = String::new();
+    if quote {
+        s.push('"');
+    }
+    for c in arg.chars() {
+        match c {
+            '"' | '`' | '$' | '\\' if quote => {
+                s.push('\\');
+                s.push(c);
+            }
+            '%' => s.push_str("%%"),
+            _ => s.push(c),
+        }
+    }
+    if quote {
+        s.push('"');
+    }
+    // string layer
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 pub fn desktop_entry(bin: &Path) -> String {
-    let exec = bin.to_string_lossy();
-    let exec = if exec.contains(' ') {
-        format!("\"{exec}\"")
-    } else {
-        exec.into_owned()
-    };
+    let exec = exec_quote(&bin.to_string_lossy());
     format!(
         "[Desktop Entry]\nType=Application\nName=md-viewer\nGenericName=Markdown Viewer\n\
          Comment=Lightweight Markdown viewer\nExec={exec} %f\nIcon=md-viewer\n\
@@ -370,6 +489,63 @@ fn write_file(path: &Path, data: &[u8], exec: bool) -> Result<()> {
 
 // -------------------------------------------------------------- install
 
+/// One association change decided by the planner, applied after the install
+/// record is safely on disk.
+struct Pending {
+    mime: String,
+    /// First handler that will be replaced (`None` = there was none).
+    prior: Option<String>,
+    /// Complete previous list, when known and its head is `prior`.
+    prior_list: Option<String>,
+    /// Value as stored before we touch it (for rollback).
+    orig_list: Option<String>,
+    /// Overwrite an existing record (primary type) vs. keep the first one.
+    overwrite: bool,
+}
+
+fn first_handler(list: &str) -> Option<&str> {
+    list.split(';').map(str::trim).find(|s| !s.is_empty())
+}
+
+fn plan_one(mime: &dyn MimeDb, m: &str, overwrite: bool, prior: Option<String>) -> Result<Pending> {
+    let prior = if overwrite {
+        prior
+    } else {
+        mime.query_default(m)?.filter(|p| p != DESKTOP_ID)
+    };
+    let orig_list = mime.query_list(m)?;
+    // only trust the stored list if it really starts with `prior`
+    let prior_list = orig_list
+        .clone()
+        .filter(|l| prior.is_some() && first_handler(l) == prior.as_deref());
+    Ok(Pending {
+        mime: m.to_string(),
+        prior,
+        prior_list,
+        orig_list,
+        overwrite,
+    })
+}
+
+fn rollback(mime: &dyn MimeDb, attempted: &[&Pending]) -> Vec<String> {
+    let mut errs = vec![];
+    for p in attempted.iter().rev() {
+        let cur = mime.query_list(&p.mime).ok().flatten();
+        let ours = mime.query_default(&p.mime).ok().flatten().as_deref() == Some(DESKTOP_ID);
+        if cur == p.orig_list && !ours {
+            continue;
+        }
+        let res = match &p.orig_list {
+            Some(l) => mime.set_list(&p.mime, l),
+            None => mime.unset_default(&p.mime),
+        };
+        if let Err(e) = res {
+            errs.push(format!("could not roll back {}: {e}", p.mime));
+        }
+    }
+    errs
+}
+
 pub fn install_with(
     env: &UnixEnv,
     mime: &dyn MimeDb,
@@ -406,21 +582,28 @@ pub fn install_with(
         r.act(format!("ran {what}"));
     }
 
-    // 3. association
+    // 3. decide the association (no side effects yet)
+    let old_state_bytes = fs::read(env.state_file()).ok();
     let mut state = load_state(env).unwrap_or_default();
     state.version = env!("CARGO_PKG_VERSION").to_string();
     state.bin = bin.to_string_lossy().into_owned();
+    if let Ok(data) = fs::read(&bin) {
+        state.bin_len = Some(data.len() as u64);
+        state.bin_hash = Some(fnv1a_hex(&data));
+    }
 
     if !mime.has_xdg_mime() {
         r.note("xdg-mime not found (install xdg-utils); editing ~/.config/mimeapps.list directly");
     }
+    let mut pending: Vec<Pending> = vec![];
+    let mut done_msg: Option<String> = None;
     match decide_assoc(current.as_deref(), &[DESKTOP_ID], opts, prompter) {
         AssocDecision::Disabled => r.act("skipped file association (--no-assoc)"),
         AssocDecision::AlreadyOurs => {
             // make sure the secondary type is covered too, keep recorded priors
             for m in &MIMES[1..] {
                 if mime.query_default(m)?.as_deref() != Some(DESKTOP_ID) {
-                    state_set(mime, &mut state, m, &mut r)?;
+                    pending.push(plan_one(mime, m, false, None)?);
                 }
             }
             r.act("md-viewer is already the default for Markdown");
@@ -433,21 +616,28 @@ pub fn install_with(
             prior,
             replaced_other,
         } => {
-            mime.set_default(MIMES[0], DESKTOP_ID)?;
-            state
-                .prior_defaults
-                .insert(MIMES[0].to_string(), prior.clone());
+            pending.push(plan_one(mime, MIMES[0], true, prior.clone())?);
             for m in &MIMES[1..] {
-                state_set(mime, &mut state, m, &mut r)?;
+                pending.push(plan_one(mime, m, false, None)?);
             }
-            match (replaced_other, prior) {
-                (true, Some(p)) => r.act(format!("set default for Markdown (replaced {p})")),
-                _ => r.act("set default for Markdown"),
-            }
+            done_msg = Some(match (replaced_other, prior) {
+                (true, Some(p)) => format!("set default for Markdown (replaced {p})"),
+                _ => "set default for Markdown".to_string(),
+            });
+        }
+    }
+    for p in &pending {
+        if p.overwrite || !state.prior_defaults.contains_key(&p.mime) {
+            state.prior_defaults.insert(p.mime.clone(), p.prior.clone());
+            match &p.prior_list {
+                Some(l) => state.prior_lists.insert(p.mime.clone(), l.clone()),
+                None => state.prior_lists.remove(&p.mime),
+            };
         }
     }
 
-    // 4. state
+    // 4. record first, then change the user's defaults: if recording fails the
+    // previous default is untouched; if applying fails we roll both back.
     write_file(
         &env.state_file(),
         &serde_json::to_vec_pretty(&state)?,
@@ -455,17 +645,35 @@ pub fn install_with(
     )?;
     r.act(format!("recorded {}", env.state_file().display()));
 
+    for (i, p) in pending.iter().enumerate() {
+        if let Err(e) = mime.set_default(&p.mime, DESKTOP_ID) {
+            let attempted: Vec<&Pending> = pending[..=i].iter().collect();
+            let mut msg = format!("could not set default for {}: {e}", p.mime);
+            for x in rollback(mime, &attempted) {
+                msg.push_str("; ");
+                msg.push_str(&x);
+            }
+            match &old_state_bytes {
+                Some(b) => {
+                    if fs::write(env.state_file(), b).is_err() {
+                        msg.push_str("; could not restore install.json");
+                    }
+                }
+                None => {
+                    let _ = fs::remove_file(env.state_file());
+                }
+            }
+            return Err(crate::Error(msg));
+        }
+    }
+    if let Some(m) = done_msg {
+        r.act(m);
+    }
+
     if !std::env::split_paths(&env.path_var).any(|p| p == env.bin_dir) {
         r.note(format!("{} is not on your PATH", env.bin_dir.display()));
     }
     Ok(r)
-}
-
-fn state_set(mime: &dyn MimeDb, st: &mut State, m: &str, _r: &mut Report) -> Result<()> {
-    let prior = mime.query_default(m)?.filter(|p| p != DESKTOP_ID);
-    mime.set_default(m, DESKTOP_ID)?;
-    st.prior_defaults.entry(m.to_string()).or_insert(prior);
-    Ok(())
 }
 
 // ------------------------------------------------------------ uninstall
@@ -496,9 +704,13 @@ pub fn uninstall_with(env: &UnixEnv, mime: &dyn MimeDb, opts: &UninstallOptions)
             .and_then(|s| s.prior_defaults.get(m))
             .cloned()
             .flatten();
+        let list = state.as_ref().and_then(|s| s.prior_lists.get(m)).cloned();
         match prior {
             Some(p) if !opts.no_restore => {
-                mime.set_default(m, &p)?;
+                match list {
+                    Some(l) => mime.set_list(m, &l)?,
+                    None => mime.set_default(m, &p)?,
+                }
                 r.act(format!("restored {p} as default for {m}"));
             }
             _ => {
@@ -521,14 +733,37 @@ pub fn uninstall_with(env: &UnixEnv, mime: &dyn MimeDb, opts: &UninstallOptions)
     }
     let _ = fs::remove_dir(env.state_dir()); // only if empty
     let bin = env.bin();
-    if bin.exists() {
-        fs::remove_file(&bin)?;
-        r.act(format!("removed {}", bin.display()));
+    if bin.symlink_metadata().is_ok() {
+        match bin_is_ours(&bin, state.as_ref()) {
+            Ok(()) => {
+                fs::remove_file(&bin)?;
+                r.act(format!("removed {}", bin.display()));
+            }
+            Err(why) => r.note(format!("left {} in place: {why}", bin.display())),
+        }
     }
     for what in mime.refresh() {
         r.act(format!("ran {what}"));
     }
     Ok(r)
+}
+
+/// Is the file at `bin` the one this installer recorded?
+fn bin_is_ours(bin: &Path, state: Option<&State>) -> std::result::Result<(), String> {
+    let s = state.ok_or("no install record, cannot tell whether it is ours")?;
+    if Path::new(&s.bin) != bin {
+        return Err(format!("install record points to {}", s.bin));
+    }
+    if s.bin_len.is_none() && s.bin_hash.is_none() {
+        return Ok(()); // older record: path match is all we have
+    }
+    let data = fs::read(bin).map_err(|e| format!("cannot read it ({e})"))?;
+    if s.bin_len.is_some_and(|l| l != data.len() as u64)
+        || s.bin_hash.as_deref().is_some_and(|h| h != fnv1a_hex(&data))
+    {
+        return Err("it was modified or replaced since install".into());
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------- doctor
@@ -683,8 +918,11 @@ pub fn doctor_with(env: &UnixEnv, mime: &dyn MimeDb, probe: &dyn Probe) -> Docto
 #[derive(Default)]
 pub struct FakeMime {
     pub xdg: bool,
+    /// mime -> stored handler list (`a.desktop;b.desktop;`)
     pub defaults: RefCell<BTreeMap<String, String>>,
     pub refreshed: RefCell<u32>,
+    /// `set_default` fails for these mime types (failure injection).
+    pub fail_set: RefCell<Vec<String>>,
 }
 impl FakeMime {
     pub fn with_default(mime: &str, app: &str) -> Self {
@@ -692,7 +930,14 @@ impl FakeMime {
             xdg: true,
             ..Default::default()
         };
-        f.defaults.borrow_mut().insert(mime.into(), app.into());
+        f.defaults.borrow_mut().insert(
+            mime.into(),
+            if app.ends_with(';') {
+                app.to_string()
+            } else {
+                format!("{app};")
+            },
+        );
         f
     }
 }
@@ -701,10 +946,25 @@ impl MimeDb for FakeMime {
         self.xdg
     }
     fn query_default(&self, m: &str) -> Result<Option<String>> {
+        Ok(self
+            .defaults
+            .borrow()
+            .get(m)
+            .and_then(|l| first_handler(l))
+            .map(String::from))
+    }
+    fn query_list(&self, m: &str) -> Result<Option<String>> {
         Ok(self.defaults.borrow().get(m).cloned())
     }
+    fn set_list(&self, m: &str, l: &str) -> Result<()> {
+        self.defaults.borrow_mut().insert(m.into(), l.into());
+        Ok(())
+    }
     fn set_default(&self, m: &str, d: &str) -> Result<()> {
-        self.defaults.borrow_mut().insert(m.into(), d.into());
+        if self.fail_set.borrow().iter().any(|x| x == m) {
+            return Err(crate::Error(format!("injected failure for {m}")));
+        }
+        self.defaults.borrow_mut().insert(m.into(), format!("{d};"));
         Ok(())
     }
     fn unset_default(&self, m: &str) -> Result<()> {
@@ -980,6 +1240,280 @@ mod tests {
         assert_eq!(
             n,
             "[Default Applications]\ntext/markdown=md-viewer.desktop;\n"
+        );
+    }
+
+    /// Decode an `Exec=` value the way a desktop-entry reader does: string
+    /// escapes first, then shell-ish quoting, then `%%`; returns the words.
+    fn decode_exec(v: &str) -> Vec<String> {
+        let mut un = String::new();
+        let mut it = v.chars();
+        while let Some(c) = it.next() {
+            if c == '\\' {
+                match it.next() {
+                    Some('\\') => un.push('\\'),
+                    Some('n') => un.push('\n'),
+                    Some('t') => un.push('\t'),
+                    Some('r') => un.push('\r'),
+                    Some('s') => un.push(' '),
+                    o => panic!("invalid string escape {o:?} in {v:?}"),
+                }
+            } else {
+                un.push(c);
+            }
+        }
+        let mut words = vec![];
+        let mut cur = String::new();
+        let mut have = false;
+        let mut q = false;
+        let mut it = un.chars();
+        while let Some(c) = it.next() {
+            match (c, q) {
+                ('"', _) => {
+                    q = !q;
+                    have = true;
+                }
+                ('\\', true) => {
+                    let n = it.next().expect("dangling backslash");
+                    assert!("\"`$\\".contains(n), "bad quote escape {n:?}");
+                    cur.push(n);
+                }
+                (' ', false) => {
+                    if have {
+                        words.push(std::mem::take(&mut cur));
+                        have = false;
+                    }
+                }
+                (c, false) if " \t\n'><~|&;$*?#()`".contains(c) || c == '\\' => {
+                    panic!("unquoted reserved char {c:?} in {v:?}")
+                }
+                (c, _) => {
+                    cur.push(c);
+                    have = true;
+                }
+            }
+        }
+        assert!(!q, "unterminated quote");
+        if have {
+            words.push(cur);
+        }
+        words.into_iter().map(|w| w.replace("%%", "%")).collect()
+    }
+
+    #[test]
+    fn exec_quoting_roundtrips_weird_paths() {
+        for path in [
+            "/home/u/.local/bin/md-viewer",
+            "/home/my user/bin/md-viewer",
+            "/home/q\"uote/md-viewer",
+            "/home/back`tick/md-viewer",
+            "/home/do$llar/$HOME/md-viewer",
+            "/home/back\\slash/md-viewer",
+            "/home/100%/%f/md-viewer",
+            "/home/a'b;c&d(e)/md-viewer",
+            "/home/all \"`$\\% mixed/md-viewer",
+        ] {
+            let de = desktop_entry(Path::new(path));
+            let line = de.lines().find(|l| l.starts_with("Exec=")).unwrap();
+            let words = decode_exec(&line["Exec=".len()..]);
+            assert_eq!(words, vec![path.to_string(), "%f".to_string()], "{line}");
+        }
+        assert_eq!(exec_quote("/a/b"), "/a/b");
+        assert_eq!(exec_quote("/a b"), "\"/a b\"");
+        assert_eq!(exec_quote("/a%b"), "/a%%b");
+        assert_eq!(exec_quote("/a$b c"), "\"/a\\\\$b c\"");
+    }
+
+    #[test]
+    fn install_with_weird_home_writes_valid_exec() {
+        let td = tempfile::tempdir().unwrap();
+        let exe = td.path().join("src-exe");
+        fs::write(&exe, b"x").unwrap();
+        let home = td.path().join("we ird\"$`%\\ home");
+        fs::create_dir_all(&home).unwrap();
+        let env = UnixEnv::new(&home, &exe, |_| None);
+        let m = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
+        install_with(
+            &env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        let de = fs::read_to_string(env.desktop_file()).unwrap();
+        let line = de.lines().find(|l| l.starts_with("Exec=")).unwrap();
+        let w = decode_exec(&line["Exec=".len()..]);
+        assert_eq!(w[0], env.bin().to_string_lossy());
+    }
+
+    #[test]
+    fn uninstall_keeps_modified_or_foreign_binary() {
+        let f = fixture();
+        let m = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
+        let o = InstallOptions::default();
+        // user replaced our binary afterwards: keep it, say so
+        install_with(&f.env, &m, &mut FixedPrompter(false), &o).unwrap();
+        fs::write(f.env.bin(), b"user's own build, different size").unwrap();
+        let r = uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert!(f.env.bin().exists());
+        assert!(r.notes.iter().any(|n| n.contains("left")), "{r}");
+        assert!(!f.env.desktop_file().exists());
+        // same size, different content is also caught by the hash
+        install_with(&f.env, &m, &mut FixedPrompter(false), &o).unwrap();
+        let mut data = fs::read(f.env.bin()).unwrap();
+        data[0] ^= 0xff;
+        fs::write(f.env.bin(), &data).unwrap();
+        uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert!(f.env.bin().exists());
+    }
+
+    #[test]
+    fn uninstall_without_record_leaves_binary() {
+        let f = fixture();
+        fs::create_dir_all(f.env.bin_dir.clone()).unwrap();
+        fs::write(f.env.bin(), b"someone else's md-viewer").unwrap();
+        let m = FakeMime::default();
+        let r = uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert!(f.env.bin().exists());
+        assert!(
+            r.notes.iter().any(|n| n.contains("no install record")),
+            "{r}"
+        );
+    }
+
+    #[test]
+    fn uninstall_old_record_without_hash_still_removes() {
+        let f = fixture();
+        let m = FakeMime::default();
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        let mut st = load_state(&f.env).unwrap();
+        st.bin_len = None;
+        st.bin_hash = None;
+        fs::write(f.env.state_file(), serde_json::to_vec(&st).unwrap()).unwrap();
+        uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert!(!f.env.bin().exists());
+    }
+
+    #[test]
+    fn state_write_failure_leaves_default_untouched() {
+        let f = fixture();
+        let m = FakeMime::with_default("text/markdown", "typora.desktop;vim.desktop;");
+        // a directory where install.json must go makes the write fail
+        fs::create_dir_all(f.env.state_file()).unwrap();
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
+        assert!(install_with(&f.env, &m, &mut FixedPrompter(false), &yes).is_err());
+        assert_eq!(
+            m.defaults.borrow()["text/markdown"],
+            "typora.desktop;vim.desktop;"
+        );
+        assert_eq!(m.query_default("text/x-markdown").unwrap(), None);
+    }
+
+    #[test]
+    fn set_failure_rolls_back_defaults_and_state() {
+        let f = fixture();
+        let m = FakeMime::with_default("text/markdown", "typora.desktop;vim.desktop;");
+        m.fail_set.borrow_mut().push("text/x-markdown".into());
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
+        let e = install_with(&f.env, &m, &mut FixedPrompter(false), &yes).unwrap_err();
+        assert!(e.0.contains("text/x-markdown"), "{e}");
+        assert_eq!(
+            m.defaults.borrow()["text/markdown"],
+            "typora.desktop;vim.desktop;"
+        );
+        assert_eq!(m.query_default("text/x-markdown").unwrap(), None);
+        assert!(!f.env.state_file().exists()); // no stale record
+    }
+
+    #[test]
+    fn set_failure_restores_previous_state_file() {
+        let f = fixture();
+        let m = FakeMime::default();
+        let o = InstallOptions::default();
+        install_with(&f.env, &m, &mut FixedPrompter(false), &o).unwrap();
+        let before = fs::read(f.env.state_file()).unwrap();
+        // user lost their md-viewer default for the secondary type
+        m.unset_default("text/x-markdown").unwrap();
+        m.fail_set.borrow_mut().push("text/x-markdown".into());
+        assert!(install_with(&f.env, &m, &mut FixedPrompter(false), &o).is_err());
+        assert_eq!(fs::read(f.env.state_file()).unwrap(), before);
+    }
+
+    #[test]
+    fn full_handler_list_restored_exactly() {
+        let f = fixture();
+        let m = FakeMime::with_default("text/markdown", "a.desktop;b.desktop;");
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
+        install_with(&f.env, &m, &mut FixedPrompter(false), &yes).unwrap();
+        assert_eq!(m.defaults.borrow()["text/markdown"], "md-viewer.desktop;");
+        uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert_eq!(m.defaults.borrow()["text/markdown"], "a.desktop;b.desktop;");
+    }
+
+    #[test]
+    fn mimeapps_list_preserved_with_system_mime() {
+        // exercises the real file-backed list path (no xdg-mime involved)
+        let f = fixture();
+        let sys = SystemMime::new(&f.env);
+        let path = f.env.mimeapps();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let orig = "[Added Associations]\ntext/markdown=z.desktop;\n\n[Default Applications]\ntext/html=h.desktop;\ntext/markdown=a.desktop;b.desktop;\ntext/plain=t.desktop;\n";
+        fs::write(&path, orig).unwrap();
+        assert_eq!(
+            sys.query_list("text/markdown").unwrap().as_deref(),
+            Some("a.desktop;b.desktop;")
+        );
+        let t = fs::read_to_string(&path).unwrap();
+        let set = mimeapps_set(&t, "text/markdown", DESKTOP_ID);
+        assert!(set.contains("text/markdown=md-viewer.desktop;\ntext/plain"));
+        fs::write(&path, &set).unwrap();
+        sys.set_list("text/markdown", "a.desktop;b.desktop;")
+            .unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), orig);
+    }
+
+    #[test]
+    fn mimeapps_set_list_variants() {
+        assert_eq!(
+            mimeapps_get_list(
+                "[Default Applications]\ntext/markdown = a;b; \n",
+                "text/markdown"
+            )
+            .as_deref(),
+            Some("a;b;")
+        );
+        // section present without the key: insert after header
+        let t = "[Default Applications]\ntext/html=h;\n";
+        assert_eq!(
+            mimeapps_set_list(t, "text/markdown", "a;b;"),
+            "[Default Applications]\ntext/markdown=a;b;\ntext/html=h;\n"
+        );
+        // other section only: new section appended
+        let t = "[Added Associations]\nx/y=z;\n";
+        assert_eq!(
+            mimeapps_set_list(t, "text/markdown", "a;"),
+            "[Added Associations]\nx/y=z;\n\n[Default Applications]\ntext/markdown=a;\n"
         );
     }
 

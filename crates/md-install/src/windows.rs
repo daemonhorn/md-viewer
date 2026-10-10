@@ -43,6 +43,11 @@ pub trait Registry {
     fn delete_tree(&mut self, key: &str) -> Result<()>;
     /// Open the Windows "Default apps" settings page.
     fn open_default_apps(&mut self) -> Result<()>;
+    /// Tell running programs (Explorer, new terminals) that the user
+    /// environment changed (`WM_SETTINGCHANGE`, "Environment"). Best effort.
+    fn broadcast_environment_change(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +85,8 @@ pub struct State {
     pub prior_classes_default: Option<String>,
     /// UserChoice ProgId observed when a conflict was found (informational).
     pub prior_user_choice: Option<String>,
+    /// True only if *we* appended the install dir to the user PATH (it was
+    /// not already there); uninstall removes the entry only then.
     pub path_added: bool,
 }
 
@@ -168,7 +175,11 @@ pub fn plan_install(
 
 /// Pure planner for uninstall. `restore` is `Some(prior)` when `.md` default
 /// should be put back (inner `None` = delete the value).
-pub fn plan_uninstall(dir: &str, restore: Option<Option<String>>) -> Vec<Action> {
+pub fn plan_uninstall(
+    dir: &str,
+    restore: Option<Option<String>>,
+    remove_path: bool,
+) -> Vec<Action> {
     let c = |s: &str| format!("{CLASSES}\\{s}");
     let mut a = vec![
         Action::DeleteTree { key: c(PROG_ID) },
@@ -187,8 +198,10 @@ pub fn plan_uninstall(dir: &str, restore: Option<Option<String>>) -> Vec<Action>
         Action::DeleteTree {
             key: UNINSTALL.into(),
         },
-        Action::PathRemove(dir.to_string()),
     ];
+    if remove_path {
+        a.push(Action::PathRemove(dir.to_string()));
+    }
     match restore {
         Some(Some(p)) => a.push(set(c(".md"), "", p)),
         Some(None) => a.push(Action::DeleteValue {
@@ -213,16 +226,29 @@ pub fn path_add(existing: &str, dir: &str) -> String {
     }
 }
 
+/// Remove every segment equal to `dir`; all other segments (including empty
+/// ones) are kept exactly as they were.
 pub fn path_remove(existing: &str, dir: &str) -> String {
     let norm = |s: &str| s.trim_end_matches('\\').to_ascii_lowercase();
     existing
         .split(';')
-        .filter(|p| !p.is_empty() && norm(p) != norm(dir))
+        .filter(|p| norm(p) != norm(dir))
         .collect::<Vec<_>>()
         .join(";")
 }
 
 pub fn apply(reg: &mut dyn Registry, actions: &[Action]) -> Result<()> {
+    let mut env_changed = false;
+    let res = apply_inner(reg, actions, &mut env_changed);
+    if env_changed {
+        // the registry is already updated; a failed broadcast only delays
+        // when other programs notice
+        let _ = reg.broadcast_environment_change();
+    }
+    res
+}
+
+fn apply_inner(reg: &mut dyn Registry, actions: &[Action], env_changed: &mut bool) -> Result<()> {
     for a in actions {
         match a {
             Action::Set { key, name, value } => reg.set_string(key, name, value)?,
@@ -235,6 +261,7 @@ pub fn apply(reg: &mut dyn Registry, actions: &[Action]) -> Result<()> {
                 let new = path_add(&cur, d);
                 if new != cur {
                     reg.set_expand_string(ENV_KEY, "Path", &new)?;
+                    *env_changed = true;
                 }
             }
             Action::PathRemove(d) => {
@@ -242,6 +269,7 @@ pub fn apply(reg: &mut dyn Registry, actions: &[Action]) -> Result<()> {
                     let new = path_remove(&cur, d);
                     if new != cur {
                         reg.set_expand_string(ENV_KEY, "Path", &new)?;
+                        *env_changed = true;
                     }
                 }
             }
@@ -257,6 +285,28 @@ fn load_state(env: &WinEnv) -> Option<State> {
 
 fn user_choice(reg: &dyn Registry) -> Result<Option<String>> {
     reg.get_string(Hive::Cu, USERCHOICE, "ProgId")
+}
+
+/// Move an installed (possibly running, hence undeletable) binary out of the
+/// way. Tries `<bin>.old` first, clearing a stale one if it can; if that name
+/// is stuck (still mapped by a running process) falls back to `.old1`..`.old9`.
+/// Returns where the binary went.
+pub fn retire_binary(bin: &Path) -> std::io::Result<PathBuf> {
+    let mut last = None;
+    for n in 0..10 {
+        let ext = if n == 0 {
+            "exe.old".to_string()
+        } else {
+            format!("exe.old{n}")
+        };
+        let cand = bin.with_extension(ext);
+        let _ = fs::remove_file(&cand); // tolerate failure: it may be in use
+        match fs::rename(bin, &cand) {
+            Ok(()) => return Ok(cand),
+            Err(e) => last = Some(e),
+        }
+    }
+    Err(last.unwrap())
 }
 
 fn winpath(p: &Path) -> String {
@@ -279,11 +329,24 @@ pub fn install_with(
         let tmp = bin.with_extension("exe.new");
         fs::copy(&env.exe, &tmp)?;
         // a running exe cannot be overwritten but can be renamed away
-        if bin.exists() {
-            let _ = fs::remove_file(bin.with_extension("exe.old"));
-            fs::rename(&bin, bin.with_extension("exe.old"))?;
+        let retired = if bin.exists() {
+            match retire_binary(&bin) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    let _ = fs::remove_file(&tmp);
+                    return Err(e.into());
+                }
+            }
+        } else {
+            None
+        };
+        if let Err(e) = fs::rename(&tmp, &bin) {
+            if let Some(old) = &retired {
+                let _ = fs::rename(old, &bin); // put the old one back
+            }
+            let _ = fs::remove_file(&tmp);
+            return Err(e.into());
         }
-        fs::rename(&tmp, &bin)?;
         r.act(format!("installed {}", bin.display()));
     }
 
@@ -337,15 +400,25 @@ pub fn install_with(
             (true, *replaced_other && uc.is_some())
         }
     };
-    state.path_added = true;
+    // Only claim the PATH entry if it is not already there: a pre-existing
+    // user entry must survive uninstall. A previous run's claim is kept.
+    let dir = winpath(&env.install_dir());
+    let cur_path = reg
+        .get_string(Hive::Cu, ENV_KEY, "Path")?
+        .unwrap_or_default();
+    if path_add(&cur_path, &dir) != cur_path {
+        state.path_added = true;
+    }
 
+    // Record intent first so a failure part-way through `apply` still leaves
+    // uninstall enough to undo it (uninstall re-checks the live registry).
+    fs::write(env.state_file(), serde_json::to_vec_pretty(&state)?)?;
     apply(
         reg,
         &plan_install(&winpath(&bin), &state.version, set_default, open_settings),
     )?;
     r.act("wrote HKCU registration (ProgID, Applications, Capabilities, Uninstall) and PATH");
     r.note("open new terminals to see the updated PATH");
-    fs::write(env.state_file(), serde_json::to_vec_pretty(&state)?)?;
     Ok(r)
 }
 
@@ -376,16 +449,23 @@ pub fn uninstall_with(
             });
         }
     }
-    apply(reg, &plan_uninstall(&winpath(&env.install_dir()), restore))?;
-    r.act("removed HKCU registration and PATH entry");
+    let remove_path = state.as_ref().is_some_and(|s| s.path_added);
+    apply(
+        reg,
+        &plan_uninstall(&winpath(&env.install_dir()), restore, remove_path),
+    )?;
+    if remove_path {
+        r.act("removed HKCU registration and PATH entry");
+    } else {
+        r.act("removed HKCU registration");
+        r.note("left the user PATH untouched (md-viewer did not add its entry)");
+    }
 
     let _ = fs::remove_file(env.state_file());
     let bin = env.bin();
     if bin.exists() && fs::remove_file(&bin).is_err() {
         // running exe: rename away; remove at next opportunity
-        let old = bin.with_extension("exe.old");
-        let _ = fs::remove_file(&old);
-        let _ = fs::rename(&bin, &old);
+        let _ = retire_binary(&bin);
         r.note(format!(
             "{} is in use; delete {} manually if it remains",
             bin.display(),
@@ -395,6 +475,9 @@ pub fn uninstall_with(
         r.act(format!("removed {}", bin.display()));
     }
     let _ = fs::remove_file(bin.with_extension("exe.old"));
+    for n in 1..10 {
+        let _ = fs::remove_file(bin.with_extension(format!("exe.old{n}")));
+    }
     let _ = fs::remove_dir(env.install_dir());
     Ok(r)
 }
@@ -502,6 +585,57 @@ mod real {
 
     pub struct RealRegistry;
 
+    /// Minimal user32 FFI (no extra crates): broadcast `WM_SETTINGCHANGE` with
+    /// lParam = "Environment" so Explorer and newly started programs re-read
+    /// the user environment. Same call setx/installers use.
+    mod ffi {
+        use super::Result;
+
+        const HWND_BROADCAST: isize = 0xffff;
+        const WM_SETTINGCHANGE: u32 = 0x001A;
+        const SMTO_ABORTIFHUNG: u32 = 0x0002;
+
+        #[link(name = "user32")]
+        extern "system" {
+            // LRESULT SendMessageTimeoutW(HWND, UINT, WPARAM, LPARAM, UINT, UINT, PDWORD_PTR)
+            fn SendMessageTimeoutW(
+                hwnd: isize,
+                msg: u32,
+                wparam: usize,
+                lparam: isize,
+                flags: u32,
+                timeout_ms: u32,
+                result: *mut usize,
+            ) -> isize;
+        }
+
+        pub fn broadcast_environment_change() -> Result<()> {
+            let wide: Vec<u16> = "Environment\0".encode_utf16().collect();
+            let mut res: usize = 0;
+            // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives
+            // the call; the call is synchronous (bounded by the timeout), and
+            // `res` is a valid out pointer.
+            let ok = unsafe {
+                SendMessageTimeoutW(
+                    HWND_BROADCAST,
+                    WM_SETTINGCHANGE,
+                    0,
+                    wide.as_ptr() as isize,
+                    SMTO_ABORTIFHUNG,
+                    5000,
+                    &mut res,
+                )
+            };
+            if ok == 0 {
+                // 0 = failure or timeout of every window; not fatal
+                return Err(crate::Error(
+                    "broadcasting the environment change failed or timed out".into(),
+                ));
+            }
+            Ok(())
+        }
+    }
+
     fn hive(h: Hive) -> RegKey {
         RegKey::predef(match h {
             Hive::Cu => HKEY_CURRENT_USER,
@@ -561,6 +695,9 @@ mod real {
             hive(Hive::Cu).delete_subkey_all(key).or_else(nf)?;
             Ok(())
         }
+        fn broadcast_environment_change(&mut self) -> Result<()> {
+            ffi::broadcast_environment_change()
+        }
         fn open_default_apps(&mut self) -> Result<()> {
             std::process::Command::new("cmd")
                 .args(["/C", "start", "", "ms-settings:defaultapps"])
@@ -577,6 +714,7 @@ mod real {
 pub struct FakeRegistry {
     pub vals: BTreeMap<(Hive2, String), BTreeMap<String, String>>,
     pub opened_settings: RefCell<u32>,
+    pub broadcasts: u32,
 }
 // Hive lacks Ord; mirror it for map keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -638,6 +776,10 @@ impl Registry for FakeRegistry {
         *self.opened_settings.borrow_mut() += 1;
         Ok(())
     }
+    fn broadcast_environment_change(&mut self) -> Result<()> {
+        self.broadcasts += 1;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -664,6 +806,96 @@ mod tests {
         assert_eq!(path_add("C:\\x;c:\\A\\", "C:\\a"), "C:\\x;c:\\A\\");
         assert_eq!(path_remove("C:\\x;C:\\a;C:\\y", "c:\\A"), "C:\\x;C:\\y");
         assert_eq!(path_remove("C:\\a", "C:\\a"), "");
+        // unrelated segments, including empty ones, are preserved as-is
+        assert_eq!(path_remove("C:\\x;;C:\\a;C:\\y;", "C:\\a"), "C:\\x;;C:\\y;");
+        assert_eq!(path_remove("C:\\x;;C:\\y", "C:\\a"), "C:\\x;;C:\\y");
+    }
+
+    #[test]
+    fn preexisting_path_entry_survives_uninstall() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        let dir = winpath(&env.install_dir());
+        let before = format!("C:\\Tools;{dir}\\;;C:\\Z");
+        reg.put(Hive::Cu, ENV_KEY, "Path", &before);
+        let o = InstallOptions::default();
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert!(!load_state(&env).unwrap().path_added);
+        assert_eq!(reg.get(ENV_KEY, "Path").as_deref(), Some(before.as_str()));
+        assert_eq!(reg.broadcasts, 0); // nothing changed, nothing to announce
+                                       // reinstall keeps the (false) claim
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert!(!load_state(&env).unwrap().path_added);
+        let r = uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(reg.get(ENV_KEY, "Path").as_deref(), Some(before.as_str()));
+        assert!(r.notes.iter().any(|n| n.contains("PATH")));
+    }
+
+    #[test]
+    fn added_path_entry_removed_and_broadcast() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        reg.put(Hive::Cu, ENV_KEY, "Path", "C:\\Tools;;C:\\Z");
+        let o = InstallOptions::default();
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert!(load_state(&env).unwrap().path_added);
+        assert_eq!(reg.broadcasts, 1);
+        // second install: already present, claim kept, no new broadcast
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert!(load_state(&env).unwrap().path_added);
+        assert_eq!(reg.broadcasts, 1);
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(
+            reg.get(ENV_KEY, "Path").as_deref(),
+            Some("C:\\Tools;;C:\\Z") // empty segment preserved
+        );
+        assert_eq!(reg.broadcasts, 2);
+    }
+
+    #[test]
+    fn uninstall_without_record_leaves_path() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        let dir = winpath(&env.install_dir());
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        fs::remove_file(env.state_file()).unwrap();
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert!(reg.get(ENV_KEY, "Path").unwrap().contains(&dir));
+    }
+
+    #[test]
+    fn reinstall_survives_stuck_old_binary() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        let o = InstallOptions::default();
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        // simulate a held-open .old that cannot be removed or overwritten
+        // (a non-empty directory blocks both remove_file and rename)
+        let old = env.bin().with_extension("exe.old");
+        fs::create_dir_all(old.join("held")).unwrap();
+        fs::write(&env.exe, b"MZ-new").unwrap();
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert_eq!(fs::read(env.bin()).unwrap(), b"MZ-new");
+        assert!(env.bin().with_extension("exe.old1").is_file());
+    }
+
+    #[test]
+    fn retire_binary_prefers_plain_old_and_replaces_stale() {
+        let (_t, env) = fixture();
+        fs::create_dir_all(env.install_dir()).unwrap();
+        let bin = env.bin();
+        fs::write(&bin, b"cur").unwrap();
+        fs::write(bin.with_extension("exe.old"), b"stale").unwrap();
+        let p = retire_binary(&bin).unwrap();
+        assert_eq!(p, bin.with_extension("exe.old"));
+        assert_eq!(fs::read(p).unwrap(), b"cur");
+        assert!(!bin.exists());
     }
 
     #[test]

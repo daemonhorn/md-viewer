@@ -43,8 +43,12 @@ pub fn resolve(root: &Path, url_path: &str) -> Result<PathBuf, SandboxError> {
             "" | "." => {}
             ".." => return Err(SandboxError::Escape),
             s => {
-                // Reject Windows drive prefixes like `C:` even on unix.
-                if s.len() >= 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic()
+                // Reject Windows drive prefixes like `C:` (only meaningful on windows;
+                // `a:b.md` is a legal unix file name).
+                if cfg!(windows)
+                    && s.len() >= 2
+                    && s.as_bytes()[1] == b':'
+                    && s.as_bytes()[0].is_ascii_alphabetic()
                 {
                     return Err(SandboxError::Invalid);
                 }
@@ -64,6 +68,72 @@ pub fn resolve(root: &Path, url_path: &str) -> Result<PathBuf, SandboxError> {
         Ok(full)
     } else {
         Err(SandboxError::Escape)
+    }
+}
+
+/// Read a file previously returned by `resolve`, shrinking the
+/// canonicalize-then-read race: the file is opened first and the opened
+/// descriptor is then verified to still be a regular file inside `root`.
+pub fn read_checked(root: &Path, full: &Path) -> std::io::Result<Vec<u8>> {
+    use std::io::Read;
+    let canon_root = root.canonicalize()?;
+    let mut f = std::fs::File::open(full)?;
+    let md = f.metadata()?;
+    if !md.is_file() {
+        return Err(std::io::Error::other("not a regular file"));
+    }
+    verify_open(&f, &md, &canon_root, full)?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+fn escaped() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path escaped sandbox")
+}
+
+#[cfg(unix)]
+fn verify_open(
+    f: &std::fs::File,
+    md: &std::fs::Metadata,
+    canon_root: &Path,
+    full: &Path,
+) -> std::io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::io::AsRawFd;
+        // Authoritative: where does the opened descriptor actually live?
+        if let Ok(p) = std::fs::read_link(format!("/proc/self/fd/{}", f.as_raw_fd())) {
+            return if p.starts_with(canon_root) {
+                Ok(())
+            } else {
+                Err(escaped())
+            };
+        }
+    }
+    let _ = f;
+    // Portable: the path must still canonicalize inside root to the same inode.
+    let again = full.canonicalize()?;
+    let m2 = std::fs::metadata(&again)?;
+    if again.starts_with(canon_root) && m2.ino() == md.ino() && m2.dev() == md.dev() {
+        Ok(())
+    } else {
+        Err(escaped())
+    }
+}
+
+#[cfg(not(unix))]
+fn verify_open(
+    _f: &std::fs::File,
+    _md: &std::fs::Metadata,
+    canon_root: &Path,
+    full: &Path,
+) -> std::io::Result<()> {
+    if full.canonicalize()?.starts_with(canon_root) {
+        Ok(())
+    } else {
+        Err(escaped())
     }
 }
 
@@ -122,6 +192,7 @@ mod tests {
             Err(SandboxError::Escape)
         );
         assert_eq!(resolve(&root, "/a%00.md"), Err(SandboxError::Invalid));
+        #[cfg(windows)]
         assert_eq!(resolve(&root, "/C:/x"), Err(SandboxError::Invalid));
         assert_eq!(
             resolve(&root, "/..\\secret.txt"),
@@ -141,6 +212,26 @@ mod tests {
             resolve(&root, "/dirlink/secret.txt"),
             Err(SandboxError::Escape)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn colon_names_allowed_on_unix() {
+        let d = tmp("colon");
+        let root = d.join("root");
+        fs::write(root.join("a:b.md"), "x").unwrap();
+        assert!(resolve(&root, "/a:b.md").is_ok());
+    }
+
+    #[test]
+    fn read_checked_reads_inside_and_rejects_outside() {
+        let d = tmp("rc");
+        let root = d.join("root").canonicalize().unwrap();
+        let ok = resolve(&root, "/a.md").unwrap();
+        assert_eq!(read_checked(&root, &ok).unwrap(), b"x");
+        let outside = d.join("secret.txt").canonicalize().unwrap();
+        assert!(read_checked(&root, &outside).is_err());
+        assert!(read_checked(&root, &root).is_err());
     }
 
     #[test]

@@ -11,5 +11,5 @@ needs_math: false
 </div>
 <p align="right">right</p>
 <table><tbody><tr><td>cell</td></tr></tbody></table>
-<p><picture><source srcset="dark.png" media="(prefers-color-scheme: dark)"><img src="light.png" alt="x"></picture></p>
+<p><picture><img src="light.png" alt="x"></picture></p>
 <p>Inline <b>bold</b> <span class="x">span</span>  end.</p>

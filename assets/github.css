@@ -6,15 +6,15 @@
 --note:#4493f8;--tip:#3fb950;--important:#ab7df8;--warning:#d29922;--caution:#f85149}
 html{background:var(--bg)}
 body{margin:0;color:var(--fg);background:var(--bg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif;word-wrap:break-word}
-#layout{display:flex;align-items:flex-start}
-#toc{position:sticky;top:0;flex:0 0 240px;max-height:100vh;overflow:auto;padding:24px 12px 24px 20px;font-size:13px;box-sizing:border-box;border-right:1px solid var(--bd)}
-#toc[hidden]{display:none}
-#toc a{display:block;color:var(--fg2);text-decoration:none;padding:2px 0}
-#toc a:hover{color:var(--link)}
-#toc .l2{padding-left:10px}#toc .l3{padding-left:20px}#toc .l4,#toc .l5,#toc .l6{padding-left:30px}
-#main{flex:1;min-width:0}
+#mdv-layout{display:flex;align-items:flex-start}
+#mdv-toc{position:sticky;top:0;flex:0 0 240px;max-height:100vh;overflow:auto;padding:24px 12px 24px 20px;font-size:13px;box-sizing:border-box;border-right:1px solid var(--bd)}
+#mdv-toc[hidden]{display:none}
+#mdv-toc a{display:block;color:var(--fg2);text-decoration:none;padding:2px 0}
+#mdv-toc a:hover{color:var(--link)}
+#mdv-toc .mdv-l2{padding-left:10px}#mdv-toc .mdv-l3{padding-left:20px}#mdv-toc .mdv-l4,#mdv-toc .mdv-l5,#mdv-toc .mdv-l6{padding-left:30px}
+#mdv-main{flex:1;min-width:0}
 article{box-sizing:border-box;max-width:980px;margin:0 auto;padding:32px 45px}
-@media (max-width:700px){article{padding:16px}#toc{display:none}}
+@media (max-width:700px){article{padding:16px}#mdv-toc{display:none}}
 article>:first-child{margin-top:0!important}
 a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}
 h1,h2,h3,h4,h5,h6{margin:24px 0 16px;font-weight:600;line-height:1.25}
@@ -48,11 +48,11 @@ details.frontmatter{background:var(--bg2);border:1px solid var(--bd);border-radi
 details.frontmatter pre{margin:8px 0 0;background:none;padding:0}
 pre.raw{border-radius:0;margin:0;min-height:100vh;box-sizing:border-box;white-space:pre-wrap}
 .mermaid-note,.math-note{color:var(--fg2);font-size:12px}
-#find{position:fixed;right:16px;bottom:16px;display:flex;gap:6px;padding:6px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;box-shadow:0 4px 16px #0004}
-#find[hidden]{display:none}
-#find input{font:14px inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;width:220px}
-#find button{color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:4px;cursor:pointer}
-#modebadge{position:fixed;top:8px;right:12px;font-size:12px;color:var(--fg2);background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:1px 10px;opacity:.7}
+#mdv-find{position:fixed;right:16px;bottom:16px;display:flex;gap:6px;padding:6px;background:var(--bg2);border:1px solid var(--bd);border-radius:8px;box-shadow:0 4px 16px #0004}
+#mdv-find[hidden]{display:none}
+#mdv-find input{font:14px inherit;color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;width:220px}
+#mdv-find button{color:var(--fg);background:var(--bg);border:1px solid var(--bd);border-radius:4px;cursor:pointer}
+#mdv-modebadge{position:fixed;top:8px;right:12px;font-size:12px;color:var(--fg2);background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:1px 10px;opacity:.7}
 .drop{text-align:center;margin-top:20vh}.drop h1{border:0}
 /* dialect additions: GitLab TOC / inapplicable tasks, ==highlight==, extra callout types */
 nav.toc{border:1px solid var(--bd);border-radius:6px;padding:8px 16px;margin:0 0 16px;display:inline-block;min-width:16em}

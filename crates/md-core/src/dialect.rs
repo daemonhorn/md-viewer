@@ -3,6 +3,7 @@
 //! wikilink hrefs) and HTML post-processing (TOC generation, task classes).
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 
 use comrak::nodes::{Ast, AstNode, NodeHtmlBlock, NodeTaskItem, NodeValue};
 use comrak::{Anchorizer, Arena};
@@ -135,12 +136,30 @@ fn fence_of(line: &str) -> Option<(char, usize, &str)> {
     (n >= 3).then(|| (c, n, &t[n..]))
 }
 
+/// Start offsets of every backtick run in `b`, grouped by run length (ascending).
+fn backtick_runs(b: &[u8]) -> HashMap<usize, Vec<usize>> {
+    let mut m: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut j = 0;
+    while j < b.len() {
+        if b[j] == b'`' {
+            let n = b[j..].iter().take_while(|&&c| c == b'`').count();
+            m.entry(n).or_default().push(j);
+            j += n;
+        } else {
+            j += 1;
+        }
+    }
+    m
+}
+
 /// Process one non-fenced line: strip `%%comments%%` and rewrite `![[embeds]]`,
 /// leaving inline code spans untouched.
 fn process_line(line: &str, in_comment: &mut bool, comments_ok: bool) -> String {
     let b = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
+    let mut runs: Option<HashMap<usize, Vec<usize>>> = None;
+    let mut embed_close: Option<Option<usize>> = None;
     while i < b.len() {
         if *in_comment {
             match line[i..].find("%%") {
@@ -166,20 +185,13 @@ fn process_line(line: &str, in_comment: &mut bool, comments_ok: bool) -> String 
             b'`' => {
                 let n = b[i..].iter().take_while(|&&c| c == b'`').count();
                 let ticks = &line[i..i + n];
-                let mut j = i + n;
-                let mut close = None;
-                while j < b.len() {
-                    if b[j] == b'`' {
-                        let m = b[j..].iter().take_while(|&&c| c == b'`').count();
-                        if m == n {
-                            close = Some(j + m);
-                            break;
-                        }
-                        j += m;
-                    } else {
-                        j += 1;
-                    }
-                }
+                // Closer = next backtick run of exactly the same length. Runs are
+                // indexed once per line so unmatched openers cost O(log n), not O(line).
+                let runs = runs.get_or_insert_with(|| backtick_runs(b));
+                let close = runs.get(&n).and_then(|starts| {
+                    let k = starts.partition_point(|&s| s < i + n);
+                    starts.get(k).map(|&s| s + n)
+                });
                 match close {
                     Some(e) => {
                         out.push_str(&line[i..e]);
@@ -196,12 +208,27 @@ fn process_line(line: &str, in_comment: &mut bool, comments_ok: bool) -> String 
                 i += 2;
             }
             b'!' if line[i..].starts_with("![[") => {
-                if let Some(end) = line[i + 3..].find("]]") {
-                    let inner = &line[i + 3..i + 3 + end];
-                    if let Some(rep) = embed_markdown(inner) {
-                        out.push_str(&rep);
-                        i += 3 + end + 2;
-                        continue;
+                // Next `]]` at or after i+3, cached so repeated `![[` stay linear.
+                let close = match embed_close {
+                    Some(c) if c.is_none_or(|p| p >= i + 3) => c,
+                    _ => {
+                        let c = line[i + 3..].find("]]").map(|p| p + i + 3);
+                        embed_close = Some(c);
+                        c
+                    }
+                };
+                if let Some(end) = close {
+                    let inner = &line[i + 3..end];
+                    // `embed_markdown` rejects these; check cheaply so a long `inner`
+                    // is not scanned again for every `![[` inside it.
+                    let t = inner.trim_start();
+                    let rejected = t.is_empty() || t.starts_with(['#', '|']);
+                    if !rejected {
+                        if let Some(rep) = embed_markdown(inner) {
+                            out.push_str(&rep);
+                            i = end + 2;
+                            continue;
+                        }
                     }
                 }
                 out.push('!');
@@ -556,13 +583,33 @@ fn build_toc(hs: &[Heading]) -> String {
     out
 }
 
-pub(crate) fn postprocess(mut html: String) -> String {
-    if html.contains(TOC_PLACEHOLDER) {
+/// Only the first few `[TOC]` markers expand to a table of contents; further ones are
+/// dropped. (Each copy is as large as the heading list, so unbounded copies would make
+/// output size quadratic in the input.)
+const MAX_TOCS: usize = 8;
+
+pub(crate) fn postprocess(html: String) -> String {
+    let html = if html.contains(TOC_PLACEHOLDER) {
         let toc = build_toc(&collect_headings(&html));
-        html = html
-            .replace(&format!("{TOC_PLACEHOLDER}\n"), &format!("{toc}\n"))
-            .replace(TOC_PLACEHOLDER, &toc);
-    }
+        let mut out = String::with_capacity(html.len());
+        let mut rest = html.as_str();
+        let mut count = 0;
+        while let Some(i) = rest.find(TOC_PLACEHOLDER) {
+            out.push_str(&rest[..i]);
+            rest = &rest[i + TOC_PLACEHOLDER.len()..];
+            if count < MAX_TOCS {
+                out.push_str(&toc);
+            } else {
+                // drop the marker together with its trailing newline
+                rest = rest.strip_prefix('\n').unwrap_or(rest);
+            }
+            count += 1;
+        }
+        out.push_str(rest);
+        out
+    } else {
+        html
+    };
     mark_inapplicable(html)
 }
 
