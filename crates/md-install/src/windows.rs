@@ -20,6 +20,14 @@ const UNINSTALL: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall
 const USERCHOICE: &str =
     "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.md\\UserChoice";
 const ENV_KEY: &str = "Environment";
+/// Extensions md-viewer registers for. `.md` is the primary one; the others
+/// are claimed as default only when no one owns them (see `plan_types`).
+pub const EXTS: [&str; 5] = [".md", ".markdown", ".mdown", ".mkd", ".mkdn"];
+/// MIME types registered under `Software\Classes\MIME\Database\Content Type`.
+pub const MIME_TYPES: [&str; 2] = ["text/markdown", "text/x-markdown"];
+const CONTENT_TYPE: &str = "text/markdown";
+const PERCEIVED_TYPE: &str = "text";
+const MIME_DB: &str = "MIME\\Database\\Content Type";
 const WEBVIEW2_KEY: &str =
     "SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
 const WEBVIEW2_KEY_USER: &str =
@@ -88,6 +96,17 @@ pub struct State {
     /// True only if *we* appended the install dir to the user PATH (it was
     /// not already there); uninstall removes the entry only then.
     pub path_added: bool,
+    /// Values we set under `Software\Classes\.md` ("Content Type",
+    /// "PerceivedType") -> the value that was there before (`None` = absent).
+    #[serde(default)]
+    pub prior_values: BTreeMap<String, Option<String>>,
+    /// Extensions (besides `.md`) whose class default we set because nobody
+    /// owned them.
+    #[serde(default)]
+    pub claimed_exts: Vec<String>,
+    /// MIME types whose `MIME\Database\Content Type` key we created.
+    #[serde(default)]
+    pub mime_keys: Vec<String>,
 }
 
 /// One planned registry-level step.
@@ -146,16 +165,18 @@ pub fn plan_install(
             cmd.clone(),
         ),
         set(c(APP_KEY), "FriendlyAppName", "md-viewer"),
-        set(c(&format!("{APP_KEY}\\SupportedTypes")), ".md", ""),
+        set(
+            c(&format!("{APP_KEY}\\DefaultIcon")),
+            "",
+            format!("\"{exe}\",0"),
+        ),
         set(c(&format!("{APP_KEY}\\shell\\open\\command")), "", cmd),
-        set(c(".md\\OpenWithProgids"), PROG_ID, ""),
         set(CAPS, "ApplicationName", "md-viewer"),
         set(
             CAPS,
             "ApplicationDescription",
             "Lightweight Markdown viewer",
         ),
-        set(format!("{CAPS}\\FileAssociations"), ".md", PROG_ID),
         set(REGAPPS, APP, CAPS),
         set(UNINSTALL, "DisplayName", "md-viewer"),
         set(UNINSTALL, "DisplayVersion", version),
@@ -164,6 +185,11 @@ pub fn plan_install(
         set(UNINSTALL, "UninstallString", format!("\"{exe}\" uninstall")),
         Action::PathAdd(dir),
     ];
+    for ext in EXTS {
+        a.push(set(c(&format!("{APP_KEY}\\SupportedTypes")), ext, ""));
+        a.push(set(c(&format!("{ext}\\OpenWithProgids")), PROG_ID, ""));
+        a.push(set(format!("{CAPS}\\FileAssociations"), ext, PROG_ID));
+    }
     if set_default {
         a.push(set(c(".md"), "", PROG_ID));
     }
@@ -184,10 +210,6 @@ pub fn plan_uninstall(
     let mut a = vec![
         Action::DeleteTree { key: c(PROG_ID) },
         Action::DeleteTree { key: c(APP_KEY) },
-        Action::DeleteValue {
-            key: c(".md\\OpenWithProgids"),
-            name: PROG_ID.into(),
-        },
         Action::DeleteTree {
             key: "Software\\md-viewer".into(),
         },
@@ -199,6 +221,12 @@ pub fn plan_uninstall(
             key: UNINSTALL.into(),
         },
     ];
+    for ext in EXTS {
+        a.push(Action::DeleteValue {
+            key: c(&format!("{ext}\\OpenWithProgids")),
+            name: PROG_ID.into(),
+        });
+    }
     if remove_path {
         a.push(Action::PathRemove(dir.to_string()));
     }
@@ -281,6 +309,128 @@ fn apply_inner(reg: &mut dyn Registry, actions: &[Action], env_changed: &mut boo
 
 fn load_state(env: &WinEnv) -> Option<State> {
     serde_json::from_slice(&fs::read(env.state_file()).ok()?).ok()
+}
+
+/// True when an install record and the installed binary both exist.
+pub fn is_installed(env: &WinEnv) -> bool {
+    load_state(env).is_some() && env.bin().is_file()
+}
+
+fn classes(s: &str) -> String {
+    format!("{CLASSES}\\{s}")
+}
+
+fn user_choice_for(reg: &dyn Registry, ext: &str) -> Result<Option<String>> {
+    reg.get_string(
+        Hive::Cu,
+        &format!(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\{ext}\\UserChoice"
+        ),
+        "ProgId",
+    )
+}
+
+/// Content-type / MIME / secondary-extension registration, decided against
+/// the live registry. Records what it touches in `state` so uninstall can
+/// undo exactly that.
+///
+/// * `own_md`: md-viewer owns `.md` (so a foreign `Content Type` there may be
+///   replaced; otherwise only an absent value is filled in).
+/// * `claim_exts`: make md-viewer the class default of `.markdown`, `.mdown`,
+///   `.mkd`, `.mkdn` when nobody owns them (no class default, no UserChoice).
+fn plan_types(
+    reg: &dyn Registry,
+    state: &mut State,
+    own_md: bool,
+    claim_exts: bool,
+) -> Result<Vec<Action>> {
+    let mut a = vec![];
+    let md = classes(".md");
+    for (name, val) in [
+        ("Content Type", CONTENT_TYPE),
+        ("PerceivedType", PERCEIVED_TYPE),
+    ] {
+        let cur = reg.get_string(Hive::Cu, &md, name)?;
+        match cur.as_deref() {
+            Some(v) if v == val => {}
+            None => {
+                state.prior_values.entry(name.into()).or_insert(None);
+                a.push(set(md.as_str(), name, val));
+            }
+            Some(_) if own_md => {
+                state.prior_values.entry(name.into()).or_insert(cur.clone());
+                a.push(set(md.as_str(), name, val));
+            }
+            Some(_) => {} // someone else's value and we do not own .md
+        }
+    }
+    for mt in MIME_TYPES {
+        let key = classes(&format!("{MIME_DB}\\{mt}"));
+        // present (ours already, or foreign): never overwrite
+        if reg.get_string(Hive::Cu, &key, "Extension")?.is_none() {
+            if !state.mime_keys.iter().any(|m| m == mt) {
+                state.mime_keys.push(mt.to_string());
+            }
+            a.push(set(key, "Extension", ".md"));
+        }
+    }
+    if claim_exts {
+        for ext in &EXTS[1..] {
+            let cur = reg.get_string(Hive::Cu, &classes(ext), "")?;
+            let unowned = cur.as_deref().map(str::is_empty).unwrap_or(true)
+                && user_choice_for(reg, ext)?.is_none();
+            if unowned {
+                if !state.claimed_exts.iter().any(|e| e == ext) {
+                    state.claimed_exts.push(ext.to_string());
+                }
+                a.push(set(classes(ext), "", PROG_ID));
+            }
+        }
+    }
+    Ok(a)
+}
+
+/// Undo `plan_types` using the install record; only touches values that still
+/// hold what we wrote.
+fn plan_uninstall_types(
+    reg: &dyn Registry,
+    state: &State,
+    no_restore: bool,
+) -> Result<Vec<Action>> {
+    let mut a = vec![];
+    let md = classes(".md");
+    for (name, prior) in &state.prior_values {
+        let ours = match name.as_str() {
+            "Content Type" => CONTENT_TYPE,
+            "PerceivedType" => PERCEIVED_TYPE,
+            _ => continue,
+        };
+        if reg.get_string(Hive::Cu, &md, name)?.as_deref() != Some(ours) {
+            continue;
+        }
+        match prior {
+            Some(p) if !no_restore => a.push(set(md.as_str(), name, p.as_str())),
+            _ => a.push(Action::DeleteValue {
+                key: md.clone(),
+                name: name.clone(),
+            }),
+        }
+    }
+    for ext in &state.claimed_exts {
+        if reg.get_string(Hive::Cu, &classes(ext), "")?.as_deref() == Some(PROG_ID) {
+            a.push(Action::DeleteValue {
+                key: classes(ext),
+                name: "".into(),
+            });
+        }
+    }
+    for mt in &state.mime_keys {
+        let key = classes(&format!("{MIME_DB}\\{mt}"));
+        if reg.get_string(Hive::Cu, &key, "Extension")?.as_deref() == Some(".md") {
+            a.push(Action::DeleteTree { key });
+        }
+    }
+    Ok(a)
 }
 
 fn user_choice(reg: &dyn Registry) -> Result<Option<String>> {
@@ -369,6 +519,11 @@ pub fn install_with(
         _ => decision,
     };
 
+    let own_md = matches!(decision, AssocDecision::Set { .. });
+    let claim_exts = matches!(
+        decision,
+        AssocDecision::Set { .. } | AssocDecision::AlreadyOurs
+    );
     let (set_default, open_settings) = match &decision {
         AssocDecision::Disabled => {
             r.act("skipped file association (--no-assoc)");
@@ -410,14 +565,15 @@ pub fn install_with(
         state.path_added = true;
     }
 
+    let extra = plan_types(reg, &mut state, own_md, claim_exts)?;
+
     // Record intent first so a failure part-way through `apply` still leaves
     // uninstall enough to undo it (uninstall re-checks the live registry).
     fs::write(env.state_file(), serde_json::to_vec_pretty(&state)?)?;
-    apply(
-        reg,
-        &plan_install(&winpath(&bin), &state.version, set_default, open_settings),
-    )?;
-    r.act("wrote HKCU registration (ProgID, Applications, Capabilities, Uninstall) and PATH");
+    let mut plan = plan_install(&winpath(&bin), &state.version, set_default, open_settings);
+    plan.extend(extra);
+    apply(reg, &plan)?;
+    r.act("wrote HKCU registration (ProgID, Applications, Capabilities, Uninstall, text/markdown content type, extensions) and PATH");
     r.note("open new terminals to see the updated PATH");
     Ok(r)
 }
@@ -450,10 +606,11 @@ pub fn uninstall_with(
         }
     }
     let remove_path = state.as_ref().is_some_and(|s| s.path_added);
-    apply(
-        reg,
-        &plan_uninstall(&winpath(&env.install_dir()), restore, remove_path),
-    )?;
+    let mut plan = plan_uninstall(&winpath(&env.install_dir()), restore, remove_path);
+    if let Some(s) = &state {
+        plan.extend(plan_uninstall_types(reg, s, opts.no_restore)?);
+    }
+    apply(reg, &plan)?;
     if remove_path {
         r.act("removed HKCU registration and PATH entry");
     } else {
@@ -515,6 +672,38 @@ pub fn doctor_with(env: &WinEnv, reg: &dyn Registry) -> DoctorReport {
             Status::Warn,
             "not in RegisteredApplications",
         );
+    }
+    let md_ct = g(&classes(".md"), "Content Type");
+    let mime_ok = MIME_TYPES
+        .iter()
+        .all(|mt| g(&classes(&format!("{MIME_DB}\\{mt}")), "Extension").as_deref() == Some(".md"));
+    match (md_ct.as_deref(), mime_ok) {
+        (Some(CONTENT_TYPE), true) => d.add(
+            "content-type",
+            Status::Ok,
+            ".md is text/markdown (MIME database entries present)",
+        ),
+        (Some(CONTENT_TYPE), false) => d.add(
+            "content-type",
+            Status::Warn,
+            ".md is text/markdown but MIME\\Database entries are missing",
+        ),
+        (other, _) => d.add(
+            "content-type",
+            Status::Warn,
+            format!(".md Content Type is {}", other.unwrap_or("not set")),
+        ),
+    }
+    if g(&classes(&format!("{PROG_ID}\\DefaultIcon")), "").is_some()
+        && g(&classes(&format!("{APP_KEY}\\DefaultIcon")), "").is_some()
+    {
+        d.add(
+            "icon",
+            Status::Ok,
+            "document and application icon registered",
+        );
+    } else {
+        d.add("icon", Status::Warn, "icon not registered (re-run install)");
     }
     let dir = winpath(&env.install_dir());
     let on_path = g(ENV_KEY, "Path")
@@ -699,9 +888,9 @@ mod real {
             ffi::broadcast_environment_change()
         }
         fn open_default_apps(&mut self) -> Result<()> {
-            std::process::Command::new("cmd")
-                .args(["/C", "start", "", "ms-settings:defaultapps"])
-                .status()?;
+            let mut c = std::process::Command::new("cmd");
+            c.args(["/C", "start", "", "ms-settings:defaultapps"]);
+            crate::no_window(&mut c).status()?;
             Ok(())
         }
     }
@@ -1060,5 +1249,186 @@ mod tests {
             doctor_with(&env, &reg).get("WebView2").unwrap().status,
             Status::Ok
         );
+    }
+
+    const MD: &str = "Software\\Classes\\.md";
+    const MT: &str = "Software\\Classes\\MIME\\Database\\Content Type\\text/markdown";
+    const MTX: &str = "Software\\Classes\\MIME\\Database\\Content Type\\text/x-markdown";
+
+    #[test]
+    fn content_type_and_extensions_registered() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            reg.get(MD, "Content Type").as_deref(),
+            Some("text/markdown")
+        );
+        assert_eq!(reg.get(MD, "PerceivedType").as_deref(), Some("text"));
+        assert_eq!(reg.get(MT, "Extension").as_deref(), Some(".md"));
+        assert_eq!(reg.get(MTX, "Extension").as_deref(), Some(".md"));
+        for ext in EXTS {
+            let k = format!("Software\\Classes\\{ext}");
+            assert_eq!(
+                reg.get(&format!("{k}\\OpenWithProgids"), PROG_ID)
+                    .as_deref(),
+                Some("")
+            );
+            assert_eq!(
+                reg.get(
+                    "Software\\Classes\\Applications\\md-viewer.exe\\SupportedTypes",
+                    ext
+                )
+                .as_deref(),
+                Some("")
+            );
+            assert_eq!(reg.get(&k, "").as_deref(), Some(PROG_ID), "{ext}");
+        }
+        assert!(reg
+            .get(
+                "Software\\Classes\\Applications\\md-viewer.exe\\DefaultIcon",
+                ""
+            )
+            .unwrap()
+            .ends_with(",0"));
+        let d = doctor_with(&env, &reg);
+        assert_eq!(d.get("content-type").unwrap().status, Status::Ok);
+        assert_eq!(d.get("icon").unwrap().status, Status::Ok);
+
+        // idempotent: a second install changes nothing, priors stay None
+        let before = reg.vals.clone();
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(reg.vals, before);
+        let st = load_state(&env).unwrap();
+        assert_eq!(st.prior_values["Content Type"], None);
+
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(reg.get(MD, "Content Type"), None);
+        assert_eq!(reg.get(MD, "PerceivedType"), None);
+        assert_eq!(reg.get(MT, "Extension"), None);
+        assert_eq!(reg.get(MTX, "Extension"), None);
+        for ext in EXTS {
+            let k = format!("Software\\Classes\\{ext}");
+            assert_eq!(reg.get(&k, ""), None, "{ext}");
+            assert_eq!(reg.get(&format!("{k}\\OpenWithProgids"), PROG_ID), None);
+        }
+    }
+
+    #[test]
+    fn prior_content_type_restored_when_accepted() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        reg.put(Hive::Cu, MD, "", "Other.md");
+        reg.put(Hive::Cu, MD, "Content Type", "text/plain");
+        reg.put(Hive::Cu, MD, "PerceivedType", "document");
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &yes).unwrap();
+        assert_eq!(
+            reg.get(MD, "Content Type").as_deref(),
+            Some("text/markdown")
+        );
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &yes).unwrap(); // keeps prior
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(reg.get(MD, "Content Type").as_deref(), Some("text/plain"));
+        assert_eq!(reg.get(MD, "PerceivedType").as_deref(), Some("document"));
+        assert_eq!(reg.get(MD, "").as_deref(), Some("Other.md"));
+    }
+
+    #[test]
+    fn declined_conflict_leaves_foreign_types_and_exts_alone() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        reg.put(Hive::Cu, USERCHOICE, "ProgId", "Typora.md");
+        reg.put(Hive::Cu, MD, "Content Type", "text/plain");
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(reg.get(MD, "Content Type").as_deref(), Some("text/plain"));
+        assert_eq!(reg.get(MD, "PerceivedType").as_deref(), Some("text")); // was absent: harmless
+        for ext in &EXTS[1..] {
+            assert_eq!(reg.get(&format!("Software\\Classes\\{ext}"), ""), None);
+        }
+        // still discoverable via Open with
+        assert_eq!(
+            reg.get("Software\\Classes\\.markdown\\OpenWithProgids", PROG_ID)
+                .as_deref(),
+            Some("")
+        );
+        assert_eq!(reg.get(MT, "Extension").as_deref(), Some(".md"));
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(reg.get(MD, "Content Type").as_deref(), Some("text/plain"));
+        assert_eq!(reg.get(MD, "PerceivedType"), None);
+    }
+
+    #[test]
+    fn owned_secondary_exts_and_foreign_mime_keys_untouched() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        reg.put(
+            Hive::Cu,
+            "Software\\Classes\\.markdown",
+            "",
+            "Other.markdown",
+        );
+        let uc =
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.mkd\\UserChoice";
+        reg.put(Hive::Cu, uc, "ProgId", "Typora.md");
+        reg.put(Hive::Cu, MTX, "Extension", ".mdx");
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            reg.get("Software\\Classes\\.markdown", "").as_deref(),
+            Some("Other.markdown")
+        );
+        assert_eq!(reg.get("Software\\Classes\\.mkd", ""), None);
+        assert_eq!(
+            reg.get("Software\\Classes\\.mdown", "").as_deref(),
+            Some(PROG_ID)
+        );
+        assert_eq!(reg.get(MTX, "Extension").as_deref(), Some(".mdx"));
+        uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
+        assert_eq!(reg.get(MTX, "Extension").as_deref(), Some(".mdx"));
+        assert_eq!(
+            reg.get("Software\\Classes\\.markdown", "").as_deref(),
+            Some("Other.markdown")
+        );
+        assert_eq!(reg.get("Software\\Classes\\.mdown", ""), None);
+    }
+
+    #[test]
+    fn no_assoc_claims_no_extensions() {
+        let (_t, env) = fixture();
+        let mut reg = FakeRegistry::default();
+        let o = InstallOptions {
+            no_assoc: true,
+            ..Default::default()
+        };
+        install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
+        assert_eq!(reg.get("Software\\Classes\\.markdown", ""), None);
+        assert!(is_installed(&env));
     }
 }

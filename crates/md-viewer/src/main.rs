@@ -20,10 +20,15 @@ use wry::WebViewBuilder;
 use page::Theme;
 use serve::State;
 
-use serve::{classify_nav, Nav, BASE};
+use serve::{classify_nav, ipc_action, IpcAction, Nav, BASE};
 
-/// The release binary uses the windows GUI subsystem (no console flash), so when
+/// The binary uses the windows GUI subsystem (no console flash), so when
 /// started from a terminal re-attach to the parent console for CLI output.
+///
+/// This must NEVER call `AllocConsole` (or otherwise create a console): with
+/// `ATTACH_PARENT_PROCESS` the call simply fails when the parent has no console
+/// (Explorer double-click, `.md` file association, shell verbs), leaving the
+/// process console-less and flash-free.
 #[cfg(windows)]
 fn attach_parent_console() {
     use std::ffi::c_void;
@@ -78,6 +83,13 @@ fn attach_parent_console() {
 #[cfg(not(windows))]
 fn attach_parent_console() {}
 
+/// Window/taskbar icon: pre-decoded 64x64 RGBA (see assets/icons/README.md),
+/// so no image decoder is needed at startup.
+fn window_icon() -> Option<tao::window::Icon> {
+    const RGBA: &[u8] = include_bytes!("../../../assets/icons/md-viewer-64.rgba");
+    tao::window::Icon::from_rgba(RGBA.to_vec(), 64, 64).ok()
+}
+
 #[derive(Parser)]
 #[command(
     name = "md-viewer",
@@ -129,6 +141,7 @@ enum Cmd {
 enum UserEvent {
     Open(Option<PathBuf>),
     Reload,
+    Print,
 }
 
 fn doc_url(root: &Path, file: &Path) -> Option<String> {
@@ -239,6 +252,19 @@ fn main() {
     if let Some(c) = cli.cmd {
         std::process::exit(run_admin(c));
     }
+    // Windows only: the GUI-subsystem exe has no console, so offer a native
+    // first-launch install dialog before any window exists. Unix users run
+    // `md-viewer install` (or install.sh). Skipped when MDV_NO_INSTALL_PROMPT
+    // is set; never blocks opening the document beyond the dialog itself.
+    #[cfg(windows)]
+    {
+        let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+        if md_install::first_run::maybe_prompt_and_install(&args)
+            == md_install::first_run::Outcome::Relaunched
+        {
+            return;
+        }
+    }
     let target = match &cli.file {
         Some(f) => match locate(f, cli.root.as_deref()) {
             Some(t) => Some(t),
@@ -281,6 +307,7 @@ fn main() {
         .unwrap_or_else(|| "md-viewer".into());
     let window = WindowBuilder::new()
         .with_title(title)
+        .with_window_icon(window_icon())
         .with_inner_size(tao::dpi::LogicalSize::new(1000.0, 800.0))
         .build(&event_loop)
         .expect("window");
@@ -293,6 +320,7 @@ fn main() {
     let st = state.clone();
     let nav_proxy = proxy.clone();
     let drop_proxy = proxy.clone();
+    let ipc_proxy = proxy.clone();
     let builder = WebViewBuilder::new()
         .with_url(&initial)
         .with_custom_protocol("mdv".into(), move |_id, req| {
@@ -330,6 +358,13 @@ fn main() {
                 let _ = open::that_detached(&url);
             }
             wry::NewWindowResponse::Deny
+        })
+        .with_ipc_handler(move |req| {
+            // Only a page served by our own origin may ask for a print; forward to the
+            // event loop so webview.print() runs on the UI thread.
+            if let Some(IpcAction::Print) = ipc_action(&req.uri().to_string(), req.body()) {
+                let _ = ipc_proxy.send_event(UserEvent::Print);
+            }
         })
         .with_drag_drop_handler(move |ev| {
             if let wry::DragDropEvent::Drop { paths, .. } = ev {
@@ -399,6 +434,9 @@ fn main() {
             Event::UserEvent(UserEvent::Reload) => {
                 let _ = webview.evaluate_script("location.reload()");
             }
+            Event::UserEvent(UserEvent::Print) => {
+                let _ = webview.print();
+            }
             Event::UserEvent(UserEvent::Open(p)) => {
                 window.set_minimized(false);
                 window.set_focus();
@@ -428,6 +466,15 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn window_icon_data_is_64x64_rgba() {
+        assert_eq!(
+            include_bytes!("../../../assets/icons/md-viewer-64.rgba").len(),
+            64 * 64 * 4
+        );
+        assert!(super::window_icon().is_some());
+    }
+
     use super::*;
 
     #[test]

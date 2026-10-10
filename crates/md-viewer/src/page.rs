@@ -41,15 +41,19 @@ pub fn escape_html(s: &str) -> String {
 /// everything the app inserts uses the reserved `mdv-` prefix (app.js also ignores
 /// matches inside the document article).
 #[cfg(test)]
-pub const UI_IDS: [&str; 5] = [
+pub const UI_IDS: [&str; 7] = [
     "mdv-layout",
     "mdv-toc",
     "mdv-main",
     "mdv-find",
     "mdv-modebadge",
+    "mdv-toolbar",
+    "mdv-print",
 ];
 
 const FIND_BAR: &str = r#"<div id="mdv-find" hidden><input type="text" placeholder="Find (Enter / Shift+Enter)" aria-label="Find"><button class="mdv-prev" title="Previous">&uarr;</button><button class="mdv-next" title="Next">&darr;</button></div>"#;
+
+const TOOLBAR: &str = r#"<div id="mdv-toolbar"><button id="mdv-print" type="button" title="Print (Ctrl+P)" aria-label="Print">Print</button></div>"#;
 
 fn shell(title: &str, theme: Theme, mode: &str, flags: &str, body: &str) -> String {
     format!(
@@ -81,7 +85,7 @@ pub fn rendered_page(title: &str, r: &Rendered, theme: Theme) -> String {
         if r.needs_math { " data-math=\"1\"" } else { "" }
     );
     let body = format!(
-        "<div id=\"mdv-layout\"><nav id=\"mdv-toc\" hidden aria-label=\"Contents\"></nav><div id=\"mdv-main\"><article class=\"markdown-body\">\n{fm}{}\n</article></div></div>",
+        "{TOOLBAR}<div id=\"mdv-layout\"><nav id=\"mdv-toc\" hidden aria-label=\"Contents\"></nav><div id=\"mdv-main\"><article class=\"markdown-body\">\n{fm}{}\n</article></div></div>",
         r.html
     );
     shell(title, theme, "rendered", &flags, &body)
@@ -90,7 +94,7 @@ pub fn rendered_page(title: &str, r: &Rendered, theme: Theme) -> String {
 /// Raw source view.
 pub fn raw_page(title: &str, src: &str, theme: Theme) -> String {
     let body = format!(
-        "<div id=\"mdv-modebadge\">raw (press r)</div><pre class=\"raw\"><code>{}</code></pre>",
+        "{TOOLBAR}<div id=\"mdv-modebadge\">raw (press r)</div><pre class=\"raw\"><code>{}</code></pre>",
         escape_html(src)
     );
     shell(title, theme, "raw", "", &body)
@@ -100,7 +104,7 @@ pub fn raw_page(title: &str, src: &str, theme: Theme) -> String {
 pub fn help_page(theme: Theme) -> String {
     let body = "<article class=\"drop\"><h1>md-viewer</h1>\
         <p>Drop a Markdown file onto this window, or run <code>md-viewer FILE.md</code>.</p>\
-        <p>Keys: <kbd>r</kbd> raw/rendered &middot; <kbd>t</kbd> contents &middot; <kbd>Ctrl</kbd>+<kbd>F</kbd> find</p></article>";
+        <p>Keys: <kbd>r</kbd> raw/rendered &middot; <kbd>t</kbd> contents &middot; <kbd>Ctrl</kbd>+<kbd>F</kbd> find &middot; <kbd>Ctrl</kbd>+<kbd>P</kbd> print</p></article>";
     shell("md-viewer", theme, "help", "", body)
 }
 
@@ -135,6 +139,43 @@ mod tests {
         assert!(!p.contains("<script>alert"));
         assert!(p.contains("&lt;script&gt;"));
         assert!(p.contains("data-mode=\"raw\""));
+    }
+
+    #[test]
+    fn print_button_in_rendered_and_raw_but_not_help() {
+        let r = md_core::render("hi");
+        for p in [
+            rendered_page("t", &r, Theme::Auto),
+            raw_page("t", "x", Theme::Auto),
+        ] {
+            assert_eq!(p.matches("id=\"mdv-print\"").count(), 1);
+            assert!(p.contains("title=\"Print (Ctrl+P)\""));
+            assert!(p.contains("id=\"mdv-toolbar\""));
+        }
+        assert!(!help_page(Theme::Auto).contains("mdv-print"));
+    }
+
+    #[test]
+    fn print_stylesheet_and_script() {
+        for needle in [
+            "@media print",
+            "@page{margin:16mm}",
+            "break-after:avoid",
+            "display:table-header-group",
+            "white-space:pre-wrap",
+            "a[href^=\"http\"]::after{content:\" (\" attr(href) \")\"",
+            "details.frontmatter{display:none!important}",
+            "html:root[data-theme]",
+            "color-scheme:light",
+            "#mdv-toolbar,#mdv-print,#mdv-find,#mdv-toc,#mdv-modebadge",
+        ] {
+            assert!(CSS.contains(needle), "css: {needle}");
+        }
+        // print rules come after the dark-theme rules so they win
+        assert!(CSS.rfind("@media print").unwrap() > CSS.find(":root[data-theme=dark]").unwrap());
+        assert!(JS.contains("window.ipc.postMessage('print')"));
+        assert!(JS.contains("preventDefault();requestPrint()"));
+        assert!(JS.contains("beforeprint") && JS.contains("afterprint"));
     }
 
     #[test]

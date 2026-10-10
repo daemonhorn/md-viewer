@@ -12,3 +12,13 @@ and Bezier/spring helpers (MIT). Build with `--no-default-features` to omit all 
 
 To update: replace the file, update the version and hash above, and run
 `tests/js/mermaid-parse.mjs` (see docs/MERMAID.md).
+
+## DejaVu Sans Mono Bold (glyph outlines in the app icon)
+
+The `[md]` lettering in `assets/icons/md-viewer.svg` (and the PNG/ICO files derived from it)
+is converted to vector outlines from DejaVu Sans Mono Bold (Bitstream Vera glyphs
+Copyright (c) 2003 Bitstream, Inc.; DejaVu changes are public domain). The Bitstream Vera /
+DejaVu license permits use, copying, modification and embedding, including in derived works,
+provided the copyright notice and license are kept with any copy of the font itself. The font
+file is not distributed; only outlines of four glyphs are. License text:
+https://dejavu-fonts.github.io/License.html

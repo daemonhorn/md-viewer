@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Dark mode gradient background -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="15" flood-opacity="0.4" />
+    </filter>
+  </defs>
+  
+  <!-- App Icon Base -->
+  <rect x="48" y="48" width="416" height="416" rx="96" fill="url(#bgGradient)" filter="url(#dropShadow)" />
+  
+  <!-- Inner Border for depth -->
+  <rect x="52" y="52" width="408" height="408" rx="92" fill="none" stroke="#475569" stroke-width="6" />
+  
+  <!-- [md] Text -->
+  <text x="256" y="285" font-family="Consolas, 'Courier New', monospace" font-weight="bold" font-size="160" fill="#38bdf8" text-anchor="middle" dominant-baseline="middle" letter-spacing="-5">[md]</text>
+</svg>

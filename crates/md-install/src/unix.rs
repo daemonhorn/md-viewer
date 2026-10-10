@@ -77,6 +77,20 @@ impl UnixEnv {
         self.data_home
             .join("icons/hicolor/scalable/apps/md-viewer.svg")
     }
+    /// `icons/hicolor/<n>x<n>/apps/md-viewer.png`
+    pub fn icon_png(&self, size: u32) -> PathBuf {
+        self.data_home
+            .join(format!("icons/hicolor/{size}x{size}/apps/md-viewer.png"))
+    }
+    pub fn hicolor_dir(&self) -> PathBuf {
+        self.data_home.join("icons/hicolor")
+    }
+    /// Every icon file the installer owns.
+    pub fn icon_files(&self) -> Vec<PathBuf> {
+        let mut v = vec![self.icon()];
+        v.extend(ICON_PNGS.iter().map(|(n, _)| self.icon_png(*n)));
+        v
+    }
     pub fn state_dir(&self) -> PathBuf {
         self.data_home.join(APP)
     }
@@ -175,6 +189,7 @@ impl SystemMime {
             .env("XDG_DATA_HOME", &self.data_home)
             .env("XDG_CONFIG_HOME", &self.config_home)
             .stdin(Stdio::null());
+        crate::no_window(&mut c);
         c
     }
 }
@@ -245,6 +260,21 @@ impl MimeDb for SystemMime {
                 .status();
             if ok.map(|s| s.success()).unwrap_or(false) {
                 done.push("update-mime-database".to_string());
+            }
+        }
+        if which(
+            "gtk-update-icon-cache",
+            &std::env::var("PATH").unwrap_or_default(),
+        ) && self.data_home.join("icons/hicolor").is_dir()
+        {
+            // -t: tolerate the user theme dir having no index.theme
+            let ok = self
+                .cmd("gtk-update-icon-cache")
+                .args(["-q", "-f", "-t"])
+                .arg(self.data_home.join("icons/hicolor"))
+                .status();
+            if ok.map(|s| s.success()).unwrap_or(false) {
+                done.push("gtk-update-icon-cache".to_string());
             }
         }
         done
@@ -458,15 +488,38 @@ pub const MIME_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="text/markdown">
     <comment>Markdown document</comment>
+    <sub-class-of type="text/plain"/>
+    <alias type="text/x-markdown"/>
     <glob pattern="*.md"/>
     <glob pattern="*.markdown"/>
-    <alias type="text/x-markdown"/>
+    <glob pattern="*.mdown"/>
+    <glob pattern="*.mkd"/>
+    <glob pattern="*.mkdn"/>
   </mime-type>
 </mime-info>
 "#;
 
-pub const ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#2b5fa8"/><text x="32" y="42" font-size="28" text-anchor="middle" fill="#fff" font-family="sans-serif">M&#8595;</text></svg>
-"##;
+/// Application icon (scalable) and raster sizes, embedded at build time.
+pub const ICON_SVG: &[u8] = include_bytes!("../../../assets/icons/md-viewer.svg");
+pub const ICON_PNGS: [(u32, &[u8]); 8] = [
+    (16, include_bytes!("../../../assets/icons/md-viewer-16.png")),
+    (24, include_bytes!("../../../assets/icons/md-viewer-24.png")),
+    (32, include_bytes!("../../../assets/icons/md-viewer-32.png")),
+    (48, include_bytes!("../../../assets/icons/md-viewer-48.png")),
+    (64, include_bytes!("../../../assets/icons/md-viewer-64.png")),
+    (
+        128,
+        include_bytes!("../../../assets/icons/md-viewer-128.png"),
+    ),
+    (
+        256,
+        include_bytes!("../../../assets/icons/md-viewer-256.png"),
+    ),
+    (
+        512,
+        include_bytes!("../../../assets/icons/md-viewer-512.png"),
+    ),
+];
 
 fn write_file(path: &Path, data: &[u8], exec: bool) -> Result<()> {
     if let Some(p) = path.parent() {
@@ -575,8 +628,16 @@ pub fn install_with(
     r.act(format!("wrote {}", env.desktop_file().display()));
     write_file(&env.mime_xml(), MIME_XML.as_bytes(), false)?;
     r.act(format!("wrote {}", env.mime_xml().display()));
-    write_file(&env.icon(), ICON_SVG.as_bytes(), false)?;
-    r.act(format!("wrote placeholder icon {}", env.icon().display()));
+    write_file(&env.icon(), ICON_SVG, false)?;
+    for (n, data) in ICON_PNGS {
+        write_file(&env.icon_png(n), data, false)?;
+    }
+    r.act(format!(
+        "wrote icons ({} and {} PNG sizes) under {}",
+        env.icon().display(),
+        ICON_PNGS.len(),
+        env.hicolor_dir().display()
+    ));
 
     for what in mime.refresh() {
         r.act(format!("ran {what}"));
@@ -720,15 +781,24 @@ pub fn uninstall_with(env: &UnixEnv, mime: &dyn MimeDb, opts: &UninstallOptions)
         }
     }
 
-    for p in [
-        env.desktop_file(),
-        env.mime_xml(),
-        env.icon(),
-        env.state_file(),
-    ] {
+    let mut owned = vec![env.desktop_file(), env.mime_xml()];
+    owned.extend(env.icon_files());
+    owned.push(env.state_file());
+    for p in owned {
         if p.exists() {
             fs::remove_file(&p)?;
             r.act(format!("removed {}", p.display()));
+        }
+    }
+    for (n, _) in ICON_PNGS {
+        // only if empty; hicolor itself belongs to the icon theme
+        let _ = fs::remove_dir(env.icon_png(n).parent().unwrap());
+        let _ = fs::remove_dir(env.icon_png(n).parent().unwrap().parent().unwrap());
+    }
+    if let Some(apps) = env.icon().parent() {
+        let _ = fs::remove_dir(apps);
+        if let Some(sc) = apps.parent() {
+            let _ = fs::remove_dir(sc);
         }
     }
     let _ = fs::remove_dir(env.state_dir()); // only if empty
@@ -848,6 +918,35 @@ pub fn doctor_with(env: &UnixEnv, mime: &dyn MimeDb, probe: &dyn Probe) -> Docto
         } else {
             d.add(name, Status::Missing, format!("{} not found", p.display()));
         }
+    }
+    let mime_ok = fs::read_to_string(env.mime_xml())
+        .map(|x| x.contains("*.md") && x.contains("text/x-markdown"))
+        .unwrap_or(false);
+    if mime_ok {
+        d.add(
+            "content-type",
+            Status::Ok,
+            "text/markdown (*.md, *.markdown, ...) with alias text/x-markdown",
+        );
+    } else {
+        d.add(
+            "content-type",
+            Status::Warn,
+            "mime package missing or outdated; re-run `md-viewer install`",
+        );
+    }
+    let have = env.icon_files().iter().filter(|p| p.is_file()).count();
+    let want = 1 + ICON_PNGS.len();
+    if have == want {
+        d.add("icon", Status::Ok, format!("{want} icon files installed"));
+    } else if have == 0 {
+        d.add("icon", Status::Missing, "icons not installed");
+    } else {
+        d.add(
+            "icon",
+            Status::Warn,
+            format!("{have} of {want} icon files present; re-run `md-viewer install`"),
+        );
     }
     if load_state(env).is_some() {
         d.add(
@@ -1039,6 +1138,15 @@ mod tests {
             .unwrap()
             .contains("*.md"));
         assert!(f.env.icon().is_file());
+        for (n, data) in ICON_PNGS {
+            assert_eq!(fs::read(f.env.icon_png(n)).unwrap(), data);
+        }
+        let x = fs::read_to_string(f.env.mime_xml()).unwrap();
+        for g in ["*.md", "*.markdown", "*.mdown", "*.mkd", "*.mkdn"] {
+            assert!(x.contains(&format!("<glob pattern=\"{g}\"/>")), "{g}");
+        }
+        assert!(x.contains("<alias type=\"text/x-markdown\"/>"));
+        assert!(x.contains("<sub-class-of type=\"text/plain\"/>"));
         assert_eq!(
             m.query_default("text/markdown").unwrap().as_deref(),
             Some(DESKTOP_ID)
@@ -1161,6 +1269,8 @@ mod tests {
         assert!(!f.env.desktop_file().exists());
         assert!(!f.env.state_file().exists());
         assert!(!f.env.state_dir().exists());
+        assert!(f.env.icon_files().iter().all(|p| !p.exists()));
+        assert!(!f.env.icon_png(64).parent().unwrap().exists());
         // second uninstall is a harmless no-op
         let r = uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
         assert!(r.actions.is_empty());
@@ -1541,5 +1651,42 @@ mod tests {
         let d = doctor_with(&f.env, &m, &P(true));
         assert!(d.healthy(), "{d}");
         assert_eq!(d.get("association").unwrap().status, Status::Ok);
+        assert_eq!(d.get("content-type").unwrap().status, Status::Ok);
+        assert_eq!(d.get("icon").unwrap().status, Status::Ok);
+        fs::remove_file(f.env.icon_png(16)).unwrap();
+        let d = doctor_with(&f.env, &m, &P(true));
+        assert_eq!(d.get("icon").unwrap().status, Status::Warn);
+    }
+
+    #[test]
+    fn secondary_type_foreign_default_is_recorded_and_restored() {
+        let f = fixture();
+        let m = FakeMime::default();
+        m.set_default("text/x-markdown", "old.desktop").unwrap();
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            load_state(&f.env).unwrap().prior_defaults["text/x-markdown"].as_deref(),
+            Some("old.desktop")
+        );
+        // idempotent re-install keeps the recorded prior
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
+        assert_eq!(
+            m.query_default("text/x-markdown").unwrap().as_deref(),
+            Some("old.desktop")
+        );
+        assert_eq!(m.query_default("text/markdown").unwrap(), None);
     }
 }

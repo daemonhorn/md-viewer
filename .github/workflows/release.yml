@@ -95,6 +95,13 @@ jobs:
             . .github/scripts/freebsd-deps.sh
             cargo build --release --locked -p md-viewer
 
+      - name: Verify exe is a GUI-subsystem binary (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          ./.github/scripts/check-pe-gui.ps1 -SelfTest
+          ./.github/scripts/check-pe-gui.ps1 target/release/md-viewer.exe
+
       - name: Package
         shell: bash
         run: |

@@ -21,3 +21,6 @@ open = "5.4.4"
 percent-encoding = "2.3.2"
 tao = "0.37.1"
 wry = "0.57.0"
+
+[build-dependencies]
+winresource = { version = "0.1.31", default-features = false }

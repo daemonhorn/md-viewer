@@ -27,6 +27,25 @@ pub fn app_csp(base: &str, allow_remote_images: bool) -> String {
     )
 }
 
+/// Messages the page may send over wry's IPC channel.
+#[derive(Debug, PartialEq, Eq)]
+pub enum IpcAction {
+    Print,
+}
+
+/// Decide what an IPC message means. Only the exact body `print` sent from a page
+/// served by our own origin is accepted; everything else is ignored.
+pub fn ipc_action(url: &str, body: &str) -> Option<IpcAction> {
+    ipc_action_for(BASE, url, body)
+}
+
+fn ipc_action_for(base: &str, url: &str, body: &str) -> Option<IpcAction> {
+    if body != "print" || url.eq_ignore_ascii_case("about:blank") {
+        return None;
+    }
+    (classify_nav(url, base) == Nav::Internal).then_some(IpcAction::Print)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Nav {
     /// Navigate inside the webview.
@@ -420,6 +439,42 @@ mod tests {
         assert_eq!(classify_nav("file:///etc/passwd", b), Nav::Deny);
         assert_eq!(classify_nav("javascript:alert(1)", b), Nav::Deny);
         assert_eq!(classify_nav("about:blank", b), Nav::Internal);
+    }
+
+    #[test]
+    fn ipc_allowlist() {
+        for b in ["http://mdv.localhost", "mdv://localhost"] {
+            let ok = format!("{b}/a.md?raw=1");
+            assert_eq!(ipc_action_for(b, &ok, "print"), Some(IpcAction::Print));
+            assert_eq!(
+                ipc_action_for(b, &format!("{b}/"), "print"),
+                Some(IpcAction::Print)
+            );
+            for body in ["", "Print", "print ", "print\n", "PRINT", "open", "print;x"] {
+                assert_eq!(ipc_action_for(b, &ok, body), None, "{body:?}");
+            }
+            for url in [
+                "https://example.com/",
+                "about:blank",
+                "",
+                "file:///etc/passwd",
+                "http://mdv.localhost.evil.com/",
+                "http://mdv.localhost@evil.com/",
+                "mdv://localhost.evil.com/a.md",
+                "mdv://localhost@evil.com/a.md",
+                "javascript:print",
+            ] {
+                if url.starts_with(b) {
+                    continue;
+                }
+                assert_eq!(ipc_action_for(b, url, "print"), None, "{url:?}");
+            }
+        }
+        assert_eq!(ipc_action("https://evil.example/", "print"), None);
+        assert_eq!(
+            ipc_action(&format!("{BASE}/x.md"), "print"),
+            Some(IpcAction::Print)
+        );
     }
 
     #[test]

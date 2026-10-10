@@ -10,11 +10,24 @@
 use std::fmt;
 use std::io::{self, BufRead, IsTerminal, Write};
 
+pub mod first_run;
 pub mod unix;
 pub mod windows;
 
 /// Application name used for file names, ProgIDs and state.
 pub const APP: &str = "md-viewer";
+
+/// Keep helper processes from flashing a console window when md-viewer runs
+/// as a GUI-subsystem executable on Windows (`CREATE_NO_WINDOW`). No-op elsewhere.
+pub(crate) fn no_window(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 #[derive(Debug)]
 pub struct Error(pub String);

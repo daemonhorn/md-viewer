@@ -18,6 +18,15 @@ safe(function(){
   if(hs.length>2){hs.forEach(function(h){var a=document.createElement('a');a.href='#'+encodeURIComponent(h.id);a.textContent=h.textContent;a.className='mdv-l'+h.tagName[1];toc.appendChild(a);});toc.hidden=false;}
 });
 function toggleToc(){if(toc&&toc.children.length)toc.hidden=!toc.hidden;}
+// Print: the native print dialog is opened by the Rust side (webview.print()) on an IPC message.
+function isPrintKey(e){return e.ctrlKey&&!e.altKey&&!e.shiftKey&&!e.metaKey&&typeof e.key==='string'&&e.key.toLowerCase()==='p';}
+function requestPrint(){
+  try{if(window.ipc&&typeof window.ipc.postMessage==='function'){window.ipc.postMessage('print');return true;}}catch(e){}
+  return false;
+}
+safe(function(){var b=ui('mdv-print');if(b)b.addEventListener('click',function(){requestPrint();});});
+window.addEventListener('beforeprint',function(){safe(function(){root.classList.add('mdv-printing');if(find)find.hidden=true;try{getSelection().removeAllRanges();}catch(e){}});});
+window.addEventListener('afterprint',function(){safe(function(){root.classList.remove('mdv-printing');});});
 // Find
 var find=ui('mdv-find'),fi=find&&find.querySelector('input');
 function openFind(){if(!find||!fi)return;find.hidden=false;fi.focus();fi.select();}
@@ -25,13 +34,14 @@ function closeFind(){if(!find||!fi)return;find.hidden=true;fi.blur();getSelectio
 function doFind(back){if(fi&&fi.value)window.find(fi.value,false,!!back,true);}
 safe(function(){
   if(!fi)return;
-  fi.addEventListener('keydown',function(e){if(e.key==='Enter'){doFind(e.shiftKey);e.preventDefault();}else if(e.key==='Escape')closeFind();e.stopPropagation();});
+  fi.addEventListener('keydown',function(e){if(e.key==='Enter'){doFind(e.shiftKey);e.preventDefault();}else if(e.key==='Escape')closeFind();if(!isPrintKey(e))e.stopPropagation();});
   var p=find.querySelector('.mdv-prev'),n=find.querySelector('.mdv-next');
   if(p)p.onclick=function(){doFind(true)};
   if(n)n.onclick=function(){doFind(false)};
 });
 document.addEventListener('keydown',function(e){
   safe(function(){
+    if(isPrintKey(e)){e.preventDefault();requestPrint();return;}
     var t=e.target,tag=t&&t.tagName;
     if(tag==='INPUT'||tag==='TEXTAREA'||(t&&t.isContentEditable))return;
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'&&find){e.preventDefault();openFind();return;}
@@ -49,12 +59,20 @@ if(mode==='rendered'&&root.dataset.mermaid==='1'){
       var blocks=document.querySelectorAll('pre[lang=mermaid] code,code.language-mermaid');
       var dark=root.dataset.theme==='dark'||(root.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches);
       window.mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});
+      // When the screen theme is dark, also render a light copy that is only shown when printing.
+      var jobs=[];
       blocks.forEach(function(c,i){
         safe(function(){
-          var host=c.closest('pre')||c;
-          window.mermaid.render('mdv-mmd-'+i,c.textContent).then(function(r){var d=document.createElement('div');d.className='mdv-mermaid';d.innerHTML=r.svg;host.replaceWith(d);}).catch(function(){});
+          var host=c.closest('pre')||c,src=c.textContent;
+          jobs.push(window.mermaid.render('mdv-mmd-'+i,src).then(function(r){var d=document.createElement('div');d.className='mdv-mermaid';d.innerHTML=r.svg;host.replaceWith(d);return {d:d,src:src,i:i};}).catch(function(){return null;}));
         });
       });
+      if(dark)Promise.all(jobs).then(function(done){
+        window.mermaid.initialize({startOnLoad:false,theme:'default',securityLevel:'strict'});
+        return done.filter(Boolean).reduce(function(p,j){
+          return p.then(function(){return window.mermaid.render('mdv-mmdp-'+j.i,j.src).then(function(r){var d=document.createElement('div');d.className='mdv-mermaid mdv-mermaid-print';d.innerHTML=r.svg;j.d.classList.add('mdv-mermaid-screen');j.d.after(d);}).catch(function(){});});
+        },Promise.resolve());
+      }).catch(function(){});
     });
   });
 }

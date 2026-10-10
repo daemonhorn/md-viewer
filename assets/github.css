@@ -60,3 +60,55 @@ nav.toc ul{margin:0;padding-left:1.2em}
 nav.toc>ul{padding-left:0;list-style:none}
 .task-inapplicable{text-decoration:line-through;opacity:.6}
 mark{background:rgba(255,212,0,.35);color:inherit;padding:0 .15em;border-radius:2px}
+/* toolbar (screen only) */
+#mdv-toolbar{position:fixed;top:8px;right:12px;display:flex;gap:6px;align-items:center;z-index:5}
+#mdv-print{font:12px inherit;color:var(--fg2);background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:1px 10px;cursor:pointer;opacity:.7}
+#mdv-print:hover{opacity:1;color:var(--fg)}
+#mdv-modebadge{right:84px}
+.mdv-mermaid{overflow:auto}.mdv-mermaid svg{max-width:100%;height:auto}
+.mdv-mermaid-print{display:none}
+/* Print: always a light, single-column, chrome-free document, whatever the system or --theme setting.
+   Placed last and using html:root[data-theme] (higher specificity than the dark rules above). */
+@page{margin:16mm}
+@media print{
+html:root,html:root[data-theme]{color-scheme:light;--fg:#000;--fg2:#333;--bg:#fff;--bg2:#f4f4f4;--bd:#bbb;--link:#0645ad;--mark:#fff8c5;
+--note:#0b5cad;--tip:#116329;--important:#6639ba;--warning:#7d4e00;--caution:#a40e26}
+html,body{background:#fff!important;color:#000;height:auto;overflow:visible}
+body{font:11.5pt/1.45 Georgia,"Times New Roman","Noto Serif",serif;orphans:3;widows:3}
+#mdv-toolbar,#mdv-print,#mdv-find,#mdv-toc,#mdv-modebadge,.mdv-prev,.mdv-next{display:none!important}
+/* Front matter is metadata, not document content: hidden even though <details> may be collapsed. */
+details.frontmatter{display:none!important}
+#mdv-layout{display:block}
+#mdv-main{display:block;width:auto;max-width:none}
+article{max-width:none;width:auto;margin:0;padding:0}
+h1,h2,h3,h4,h5,h6{break-after:avoid;page-break-after:avoid;break-inside:avoid;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;color:#000}
+h1,h2{border-bottom-color:#999}
+p,li{orphans:3;widows:3}
+pre,tr,figure,img,svg,blockquote,.markdown-alert,.mdv-mermaid,nav.toc,.footnotes li{break-inside:avoid;page-break-inside:avoid}
+thead{display:table-header-group}tfoot{display:table-footer-group}
+table{display:table;width:100%;max-width:100%;overflow:visible;break-inside:auto}
+tr:nth-child(2n){background:#f4f4f4}
+th,td{border-color:#999}
+img,svg,video{max-width:100%!important;height:auto}
+.mdv-mermaid{overflow:visible;text-align:center}
+.mdv-mermaid svg{max-width:100%!important;height:auto}
+.mdv-mermaid-print{display:block}
+.mdv-mermaid-screen{display:none}
+pre,pre.raw{overflow:visible;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;background:#f6f6f6;border:1px solid #ddd;color:#000}
+pre code,pre.raw code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:none}
+pre.raw{min-height:0;border:0}
+code,kbd,pre{font-size:9.5pt}
+code{background:#eee;color:#000}
+kbd{background:#f4f4f4;border-color:#999}
+blockquote{color:#333;border-left-color:#888}
+a{color:#0645ad;text-decoration:underline}
+a[href^="http"]::after{content:" (" attr(href) ")";font-size:.85em;color:#333;word-break:break-all}
+/* no URL suffix for in-page anchors, TOC, footnote links and heading anchors */
+a[href^="#"]::after,nav.toc a::after,.footnotes a::after,a.footnote-ref::after,a[data-footnote-ref]::after,a[data-footnote-backref]::after,h1 a::after,h2 a::after,h3 a::after,h4 a::after,h5 a::after,h6 a::after{content:none!important}
+.markdown-alert{background:#fff;border:1px solid #bbb;border-left-width:.25em;border-left-style:solid;color:#000}
+.markdown-alert-note{border-left-color:var(--note)}.markdown-alert-tip{border-left-color:var(--tip)}
+.markdown-alert-important{border-left-color:var(--important)}.markdown-alert-warning{border-left-color:var(--warning)}.markdown-alert-caution{border-left-color:var(--caution)}
+.footnotes{color:#333}
+mark{background:#fff3a3!important;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.markdown-alert,.markdown-alert-title,th,tr,pre,code{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
