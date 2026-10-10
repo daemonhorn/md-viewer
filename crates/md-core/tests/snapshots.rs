@@ -29,7 +29,11 @@ fn fixtures() -> Vec<(String, String)> {
     v.sort();
     v.into_iter()
         .map(|p| {
-            let rel = p.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(&root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
             (rel, fs::read_to_string(&p).unwrap())
         })
         .collect()
@@ -38,7 +42,11 @@ fn fixtures() -> Vec<(String, String)> {
 #[test]
 fn golden_snapshots() {
     let all = fixtures();
-    assert!(all.len() >= 25, "expected the fixture set, found {}", all.len());
+    assert!(
+        all.len() >= 25,
+        "expected the fixture set, found {}",
+        all.len()
+    );
     for (rel, src) in all {
         if NO_SNAPSHOT.contains(&rel.as_str()) || SKIP_FILES.contains(&rel.as_str()) {
             continue;
@@ -62,7 +70,11 @@ fn huge_and_deep_inputs_render_without_blowup() {
     let t = std::time::Instant::now();
     let r = md_core::render(&huge);
     assert!(r.html.matches("<h2").count() == 2000);
-    assert!(t.elapsed().as_secs() < 10, "huge doc too slow: {:?}", t.elapsed());
+    assert!(
+        t.elapsed().as_secs() < 10,
+        "huge doc too slow: {:?}",
+        t.elapsed()
+    );
 
     let deep = fs::read_to_string(root.join("deep-nesting.md")).unwrap();
     let r = md_core::render(&deep);
@@ -79,7 +91,9 @@ fn dialect_features() {
     assert!(rd("github/mermaid-math.md").needs_math);
     assert!(rd("github/details.md").html.contains("<details"));
     assert!(rd("github/emoji.md").html.contains('\u{1F389}'));
-    assert!(rd("gitlab/multiline-quote.md").html.contains("<blockquote>"));
+    assert!(rd("gitlab/multiline-quote.md")
+        .html
+        .contains("<blockquote>"));
     assert!(rd("pandoc/deflist.md").html.contains("<dl>"));
     let bom = rd("edge/bom-frontmatter.md");
     assert_eq!(bom.front_matter.as_deref(), Some("title: bom"));

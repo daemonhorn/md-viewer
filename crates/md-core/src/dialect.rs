@@ -10,9 +10,9 @@ use comrak::{Anchorizer, Arena};
 const TOC_PLACEHOLDER: &str = "<mdv-toc-placeholder></mdv-toc-placeholder>";
 
 const KNOWN_EXTS: &[&str] = &[
-    "md", "markdown", "mdx", "txt", "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "avif", "ico", "pdf", "mp3", "wav", "ogg",
-    "m4a", "flac", "mp4", "webm", "mov", "mkv", "ogv", "canvas", "base", "html", "htm", "csv", "json", "yaml", "yml", "toml",
-    "zip", "docx", "xlsx", "pptx",
+    "md", "markdown", "mdx", "txt", "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "avif",
+    "ico", "pdf", "mp3", "wav", "ogg", "m4a", "flac", "mp4", "webm", "mov", "mkv", "ogv", "canvas",
+    "base", "html", "htm", "csv", "json", "yaml", "yml", "toml", "zip", "docx", "xlsx", "pptx",
 ];
 const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "avif"];
 
@@ -68,7 +68,10 @@ pub fn wikilink_href(target: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn esc_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn embed_markdown(inner: &str) -> Option<String> {
@@ -87,18 +90,34 @@ fn embed_markdown(inner: &str) -> Option<String> {
         let href = pct(path);
         let size = alias.and_then(|a| {
             let (w, h) = a.split_once('x').unwrap_or((a, ""));
-            (!w.is_empty() && w.bytes().all(|b| b.is_ascii_digit()) && h.bytes().all(|b| b.is_ascii_digit())).then_some((w, h))
+            (!w.is_empty()
+                && w.bytes().all(|b| b.is_ascii_digit())
+                && h.bytes().all(|b| b.is_ascii_digit()))
+            .then_some((w, h))
         });
         if let Some((w, h)) = size {
-            let hattr = if h.is_empty() { String::new() } else { format!(" height=\"{h}\"") };
-            return Some(format!("<img src=\"{href}\" alt=\"{}\" width=\"{w}\"{hattr}>", esc_attr(stem)));
+            let hattr = if h.is_empty() {
+                String::new()
+            } else {
+                format!(" height=\"{h}\"")
+            };
+            return Some(format!(
+                "<img src=\"{href}\" alt=\"{}\" width=\"{w}\"{hattr}>",
+                esc_attr(stem)
+            ));
         }
         let alt = alias.filter(|a| !a.is_empty()).unwrap_or(stem);
-        let alt: String = alt.chars().filter(|c| !matches!(c, '[' | ']' | '\\' | '\n')).collect();
+        let alt: String = alt
+            .chars()
+            .filter(|c| !matches!(c, '[' | ']' | '\\' | '\n'))
+            .collect();
         Some(format!("![{alt}]({href})"))
     } else {
         let label = alias.filter(|a| !a.is_empty()).unwrap_or(stem);
-        let label: String = label.chars().filter(|c| !matches!(c, '[' | ']' | '\\' | '\n')).collect();
+        let label: String = label
+            .chars()
+            .filter(|c| !matches!(c, '[' | ']' | '\\' | '\n'))
+            .collect();
         Some(format!("[{label}]({})", wikilink_href(target)))
     }
 }
@@ -253,7 +272,13 @@ fn new_node<'a>(arena: &'a Arena<'a>, v: NodeValue) -> &'a AstNode<'a> {
 }
 
 fn html_block<'a>(arena: &'a Arena<'a>, s: String) -> &'a AstNode<'a> {
-    new_node(arena, NodeValue::HtmlBlock(NodeHtmlBlock { block_type: 6, literal: s }))
+    new_node(
+        arena,
+        NodeValue::HtmlBlock(NodeHtmlBlock {
+            block_type: 6,
+            literal: s,
+        }),
+    )
 }
 
 fn plain_text<'a>(n: &'a AstNode<'a>, out: &mut String) {
@@ -269,31 +294,49 @@ fn plain_text<'a>(n: &'a AstNode<'a>, out: &mut String) {
 }
 
 fn esc_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Returns true (and rewrites the node) if `bq` is a `> [!type]` callout.
 fn rewrite_callout<'a>(arena: &'a Arena<'a>, bq: &'a AstNode<'a>) -> bool {
-    let Some(p) = bq.first_child() else { return false };
+    let Some(p) = bq.first_child() else {
+        return false;
+    };
     if !matches!(p.data.borrow().value, NodeValue::Paragraph) {
         return false;
     }
-    let Some(first) = p.first_child() else { return false };
+    let Some(first) = p.first_child() else {
+        return false;
+    };
     let lit = match &first.data.borrow().value {
         NodeValue::Text(t) => t.to_string(),
         _ => return false,
     };
-    let Some(after_bang) = lit.strip_prefix("[!") else { return false };
-    let Some(close) = after_bang.find(']') else { return false };
+    let Some(after_bang) = lit.strip_prefix("[!") else {
+        return false;
+    };
+    let Some(close) = after_bang.find(']') else {
+        return false;
+    };
     let kind = &after_bang[..close];
-    if kind.is_empty() || !kind.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if kind.is_empty()
+        || !kind
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return false;
     }
     let kind = kind.to_ascii_lowercase();
     // Header line = everything up to the first line break.
     let mut header = vec![];
     for c in p.children() {
-        if matches!(c.data.borrow().value, NodeValue::SoftBreak | NodeValue::LineBreak) {
+        if matches!(
+            c.data.borrow().value,
+            NodeValue::SoftBreak | NodeValue::LineBreak
+        ) {
             break;
         }
         header.push(c);
@@ -303,15 +346,26 @@ fn rewrite_callout<'a>(arena: &'a Arena<'a>, bq: &'a AstNode<'a>) -> bool {
         plain_text(h, &mut title);
     }
     // Fold markers (`+` open / `-` closed) are not part of the title.
-    let title = title.strip_prefix(['+', '-']).unwrap_or(&title).trim().to_owned();
+    let title = title
+        .strip_prefix(['+', '-'])
+        .unwrap_or(&title)
+        .trim()
+        .to_owned();
     let title = if title.is_empty() {
         let mut cs = kind.chars();
-        cs.next().map(|c| c.to_ascii_uppercase().to_string() + cs.as_str()).unwrap_or_default()
+        cs.next()
+            .map(|c| c.to_ascii_uppercase().to_string() + cs.as_str())
+            .unwrap_or_default()
     } else {
         title
     };
     // Drop the header line (and its line break) from the paragraph.
-    let brk = header.last().and_then(|l| l.next_sibling()).filter(|n| matches!(n.data.borrow().value, NodeValue::SoftBreak | NodeValue::LineBreak));
+    let brk = header.last().and_then(|l| l.next_sibling()).filter(|n| {
+        matches!(
+            n.data.borrow().value,
+            NodeValue::SoftBreak | NodeValue::LineBreak
+        )
+    });
     for h in &header {
         h.detach();
     }
@@ -337,27 +391,39 @@ fn rewrite_callout<'a>(arena: &'a Arena<'a>, bq: &'a AstNode<'a>) -> bool {
 }
 
 fn rewrite_task<'a>(arena: &'a Arena<'a>, item: &'a AstNode<'a>) -> bool {
-    let Some(p) = item.first_child() else { return false };
+    let Some(p) = item.first_child() else {
+        return false;
+    };
     if !matches!(p.data.borrow().value, NodeValue::Paragraph) {
         return false;
     }
-    let Some(first) = p.first_child() else { return false };
+    let Some(first) = p.first_child() else {
+        return false;
+    };
     {
         let mut d = first.data.borrow_mut();
-        let NodeValue::Text(t) = &mut d.value else { return false };
+        let NodeValue::Text(t) = &mut d.value else {
+            return false;
+        };
         let rest = match t.strip_prefix("[~]").or_else(|| t.strip_prefix("[-]")) {
             Some(r) if r.is_empty() || r.starts_with([' ', '\t']) => r.trim_start().to_owned(),
             _ => return false,
         };
         *t = rest.into();
     }
-    item.data.borrow_mut().value = NodeValue::TaskItem(NodeTaskItem { symbol: None, symbol_sourcepos: (0, 0, 0, 0).into() });
+    item.data.borrow_mut().value = NodeValue::TaskItem(NodeTaskItem {
+        symbol: None,
+        symbol_sourcepos: (0, 0, 0, 0).into(),
+    });
     if let Some(list) = item.parent() {
         if let NodeValue::List(l) = &mut list.data.borrow_mut().value {
             l.is_task_list = true;
         }
     }
-    p.prepend(new_node(arena, NodeValue::HtmlInline("<span class=\"task-inapplicable\">".into())));
+    p.prepend(new_node(
+        arena,
+        NodeValue::HtmlInline("<span class=\"task-inapplicable\">".into()),
+    ));
     p.append(new_node(arena, NodeValue::HtmlInline("</span>".into())));
     true
 }
@@ -445,7 +511,11 @@ fn collect_headings(html: &str) -> Vec<Heading> {
         if let Some(k) = body.find(KEY) {
             let t = &body[k + KEY.len()..];
             if let Some(e) = t.find('"') {
-                v.push(Heading { level, id: id.to_owned(), text: t[..e].to_owned() });
+                v.push(Heading {
+                    level,
+                    id: id.to_owned(),
+                    text: t[..e].to_owned(),
+                });
             }
         }
     }
@@ -489,7 +559,9 @@ fn build_toc(hs: &[Heading]) -> String {
 pub(crate) fn postprocess(mut html: String) -> String {
     if html.contains(TOC_PLACEHOLDER) {
         let toc = build_toc(&collect_headings(&html));
-        html = html.replace(&format!("{TOC_PLACEHOLDER}\n"), &format!("{toc}\n")).replace(TOC_PLACEHOLDER, &toc);
+        html = html
+            .replace(&format!("{TOC_PLACEHOLDER}\n"), &format!("{toc}\n"))
+            .replace(TOC_PLACEHOLDER, &toc);
     }
     mark_inapplicable(html)
 }
@@ -497,7 +569,8 @@ pub(crate) fn postprocess(mut html: String) -> String {
 /// Add the `task-inapplicable` class to the `<li>` and checkbox that precede our marker span.
 fn mark_inapplicable(html: String) -> String {
     const MARK: &str = "<span class=\"task-inapplicable\">";
-    const INPUT: &str = "<input type=\"checkbox\" class=\"task-list-item-checkbox\" disabled=\"\" /> ";
+    const INPUT: &str =
+        "<input type=\"checkbox\" class=\"task-list-item-checkbox\" disabled=\"\" /> ";
     const LI: &str = "<li class=\"task-list-item\">";
     if !html.contains(MARK) {
         return html;

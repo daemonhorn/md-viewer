@@ -61,7 +61,11 @@ pub fn rendered_page(title: &str, r: &Rendered, theme: Theme) -> String {
     };
     let flags = format!(
         "{}{}",
-        if r.needs_mermaid { " data-mermaid=\"1\"" } else { "" },
+        if r.needs_mermaid {
+            " data-mermaid=\"1\""
+        } else {
+            ""
+        },
         if r.needs_math { " data-math=\"1\"" } else { "" }
     );
     let body = format!(
@@ -89,7 +93,10 @@ pub fn help_page(theme: Theme) -> String {
 }
 
 pub fn error_page(theme: Theme, msg: &str) -> String {
-    let body = format!("<article><h1>Error</h1><p>{}</p></article>", escape_html(msg));
+    let body = format!(
+        "<article><h1>Error</h1><p>{}</p></article>",
+        escape_html(msg)
+    );
     shell("Error", theme, "help", "", &body)
 }
 

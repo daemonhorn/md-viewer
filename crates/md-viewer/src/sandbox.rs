@@ -12,13 +12,28 @@ pub enum SandboxError {
 }
 
 const SEGMENT: &AsciiSet = &CONTROLS
-    .add(b' ').add(b'"').add(b'#').add(b'%').add(b'<').add(b'>')
-    .add(b'?').add(b'`').add(b'{').add(b'}').add(b'\\').add(b'|').add(b'^').add(b'[').add(b']');
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'`')
+    .add(b'{')
+    .add(b'}')
+    .add(b'\\')
+    .add(b'|')
+    .add(b'^')
+    .add(b'[')
+    .add(b']');
 
 /// Resolve `url_path` (percent-encoded, leading `/`) under `root`.
 /// Rejects `..`, absolute/drive components, NULs, and symlinks leaving `root`.
 pub fn resolve(root: &Path, url_path: &str) -> Result<PathBuf, SandboxError> {
-    let decoded = percent_decode_str(url_path).decode_utf8().map_err(|_| SandboxError::Invalid)?;
+    let decoded = percent_decode_str(url_path)
+        .decode_utf8()
+        .map_err(|_| SandboxError::Invalid)?;
     if decoded.contains('\0') || decoded.contains('\\') {
         return Err(SandboxError::Invalid);
     }
@@ -29,7 +44,8 @@ pub fn resolve(root: &Path, url_path: &str) -> Result<PathBuf, SandboxError> {
             ".." => return Err(SandboxError::Escape),
             s => {
                 // Reject Windows drive prefixes like `C:` even on unix.
-                if s.len() >= 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic() {
+                if s.len() >= 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic()
+                {
                     return Err(SandboxError::Invalid);
                 }
                 rel.push(s);
@@ -40,7 +56,10 @@ pub fn resolve(root: &Path, url_path: &str) -> Result<PathBuf, SandboxError> {
         return Err(SandboxError::Invalid);
     }
     let canon_root = root.canonicalize().map_err(|_| SandboxError::NotFound)?;
-    let full = canon_root.join(&rel).canonicalize().map_err(|_| SandboxError::NotFound)?;
+    let full = canon_root
+        .join(&rel)
+        .canonicalize()
+        .map_err(|_| SandboxError::NotFound)?;
     if full.starts_with(&canon_root) {
         Ok(full)
     } else {
@@ -94,11 +113,20 @@ mod tests {
         let d = tmp("dd");
         let root = d.join("root");
         assert_eq!(resolve(&root, "/../secret.txt"), Err(SandboxError::Escape));
-        assert_eq!(resolve(&root, "/%2e%2e/secret.txt"), Err(SandboxError::Escape));
-        assert_eq!(resolve(&root, "/sub/%2E%2E/%2e%2e/secret.txt"), Err(SandboxError::Escape));
+        assert_eq!(
+            resolve(&root, "/%2e%2e/secret.txt"),
+            Err(SandboxError::Escape)
+        );
+        assert_eq!(
+            resolve(&root, "/sub/%2E%2E/%2e%2e/secret.txt"),
+            Err(SandboxError::Escape)
+        );
         assert_eq!(resolve(&root, "/a%00.md"), Err(SandboxError::Invalid));
         assert_eq!(resolve(&root, "/C:/x"), Err(SandboxError::Invalid));
-        assert_eq!(resolve(&root, "/..\\secret.txt"), Err(SandboxError::Invalid));
+        assert_eq!(
+            resolve(&root, "/..\\secret.txt"),
+            Err(SandboxError::Invalid)
+        );
     }
 
     #[cfg(unix)]
@@ -109,7 +137,10 @@ mod tests {
         std::os::unix::fs::symlink(d.join("secret.txt"), root.join("link.txt")).unwrap();
         std::os::unix::fs::symlink(&d, root.join("dirlink")).unwrap();
         assert_eq!(resolve(&root, "/link.txt"), Err(SandboxError::Escape));
-        assert_eq!(resolve(&root, "/dirlink/secret.txt"), Err(SandboxError::Escape));
+        assert_eq!(
+            resolve(&root, "/dirlink/secret.txt"),
+            Err(SandboxError::Escape)
+        );
     }
 
     #[test]

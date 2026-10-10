@@ -22,22 +22,38 @@ pub struct Reply {
 
 impl Reply {
     fn html(status: u16, s: String) -> Self {
-        Reply { status, mime: "text/html; charset=utf-8", body: s.into_bytes() }
+        Reply {
+            status,
+            mime: "text/html; charset=utf-8",
+            body: s.into_bytes(),
+        }
     }
     fn text(status: u16, s: &str) -> Self {
-        Reply { status, mime: "text/plain; charset=utf-8", body: s.as_bytes().to_vec() }
+        Reply {
+            status,
+            mime: "text/plain; charset=utf-8",
+            body: s.as_bytes().to_vec(),
+        }
     }
 }
 
 pub fn is_markdown(p: &Path) -> bool {
     matches!(
-        p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(),
+        p.extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
         Some("md" | "markdown" | "mdown" | "mkd" | "mdx")
     )
 }
 
 pub fn mime_for(p: &Path) -> &'static str {
-    match p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+    match p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -75,24 +91,40 @@ fn bundled_asset(name: &str) -> Option<(&'static str, &'static [u8])> {
 }
 
 fn query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
-    query.split('&').find_map(|kv| kv.split_once('=').filter(|(k, _)| *k == key).map(|(_, v)| v))
+    query.split('&').find_map(|kv| {
+        kv.split_once('=')
+            .filter(|(k, _)| *k == key)
+            .map(|(_, v)| v)
+    })
 }
 
 /// Build the reply for `path` (URL path) and `query`. Mutates `state.current` when serving a document.
 pub fn handle(state: &mut State, path: &str, query: &str) -> Reply {
     match path {
         "/__mdv/style.css" => {
-            return Reply { status: 200, mime: "text/css; charset=utf-8", body: page::CSS.as_bytes().to_vec() }
+            return Reply {
+                status: 200,
+                mime: "text/css; charset=utf-8",
+                body: page::CSS.as_bytes().to_vec(),
+            }
         }
         "/__mdv/app.js" => {
-            return Reply { status: 200, mime: "text/javascript; charset=utf-8", body: page::JS.as_bytes().to_vec() }
+            return Reply {
+                status: 200,
+                mime: "text/javascript; charset=utf-8",
+                body: page::JS.as_bytes().to_vec(),
+            }
         }
         "/favicon.ico" => return Reply::text(404, "not found"),
         _ => {}
     }
     if let Some(name) = path.strip_prefix("/__mdv/vendor/") {
         return match bundled_asset(name) {
-            Some((mime, b)) => Reply { status: 200, mime, body: b.to_vec() },
+            Some((mime, b)) => Reply {
+                status: 200,
+                mime,
+                body: b.to_vec(),
+            },
             None => Reply::text(404, "asset not bundled"),
         };
     }
@@ -119,7 +151,10 @@ pub fn handle(state: &mut State, path: &str, query: &str) -> Reply {
             Err(e) => return Reply::html(500, page::error_page(theme, &e.to_string())),
         };
         state.current = Some(full.clone());
-        let title = full.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let title = full
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let html = if raw {
             page::raw_page(&title, &src, theme)
         } else {
@@ -128,7 +163,11 @@ pub fn handle(state: &mut State, path: &str, query: &str) -> Reply {
         return Reply::html(200, html);
     }
     match std::fs::read(&full) {
-        Ok(body) => Reply { status: 200, mime: mime_for(&full), body },
+        Ok(body) => Reply {
+            status: 200,
+            mime: mime_for(&full),
+            body,
+        },
         Err(_) => Reply::text(404, "not found"),
     }
 }
@@ -152,7 +191,15 @@ mod tests {
         fs::write(d.join("root/i.png"), [1u8, 2, 3]).unwrap();
         fs::write(d.join("secret"), "s").unwrap();
         let root = d.join("root").canonicalize().unwrap();
-        (d, State { root: Some(root), current: None, raw_default: false, theme: Theme::Auto })
+        (
+            d,
+            State {
+                root: Some(root),
+                current: None,
+                raw_default: false,
+                theme: Theme::Auto,
+            },
+        )
     }
 
     #[test]
@@ -160,15 +207,23 @@ mod tests {
         let (_d, mut s) = setup();
         let r = handle(&mut s, "/a.md", "");
         assert_eq!(r.status, 200);
-        assert!(String::from_utf8(r.body).unwrap().contains("data-mode=\"rendered\""));
+        assert!(String::from_utf8(r.body)
+            .unwrap()
+            .contains("data-mode=\"rendered\""));
         assert!(s.current.is_some());
         let r = handle(&mut s, "/a.md", "raw=1");
-        assert!(String::from_utf8(r.body).unwrap().contains("data-mode=\"raw\""));
+        assert!(String::from_utf8(r.body)
+            .unwrap()
+            .contains("data-mode=\"raw\""));
         s.raw_default = true;
         let r = handle(&mut s, "/a.md", "");
-        assert!(String::from_utf8(r.body).unwrap().contains("data-mode=\"raw\""));
+        assert!(String::from_utf8(r.body)
+            .unwrap()
+            .contains("data-mode=\"raw\""));
         let r = handle(&mut s, "/a.md", "raw=0");
-        assert!(String::from_utf8(r.body).unwrap().contains("data-mode=\"rendered\""));
+        assert!(String::from_utf8(r.body)
+            .unwrap()
+            .contains("data-mode=\"rendered\""));
     }
 
     #[test]
@@ -185,9 +240,16 @@ mod tests {
 
     #[test]
     fn no_root_shows_help() {
-        let mut s = State { root: None, current: None, raw_default: false, theme: Theme::Auto };
+        let mut s = State {
+            root: None,
+            current: None,
+            raw_default: false,
+            theme: Theme::Auto,
+        };
         let r = handle(&mut s, "/", "");
-        assert!(String::from_utf8(r.body).unwrap().contains("Drop a Markdown file"));
+        assert!(String::from_utf8(r.body)
+            .unwrap()
+            .contains("Drop a Markdown file"));
     }
 
     #[cfg(feature = "mermaid")]
@@ -198,14 +260,20 @@ mod tests {
         assert_eq!((r.status, r.mime), (200, "text/javascript; charset=utf-8"));
         assert!(r.body.len() > 1_000_000, "mermaid bundle looks truncated");
         let head = String::from_utf8_lossy(&r.body[r.body.len() - 200..]).into_owned();
-        assert!(head.contains("globalThis[\"mermaid\"]"), "bundle must export global mermaid");
+        assert!(
+            head.contains("globalThis[\"mermaid\"]"),
+            "bundle must export global mermaid"
+        );
     }
 
     #[cfg(not(feature = "mermaid"))]
     #[test]
     fn lean_build_has_no_mermaid() {
         let (_d, mut s) = setup();
-        assert_eq!(handle(&mut s, "/__mdv/vendor/mermaid.min.js", "").status, 404);
+        assert_eq!(
+            handle(&mut s, "/__mdv/vendor/mermaid.min.js", "").status,
+            404
+        );
     }
 
     #[test]
@@ -214,7 +282,10 @@ mod tests {
         fs::write(d.join("root/d.md"), "```mermaid\ngraph TD; A-->B;\n```\n").unwrap();
         let with = String::from_utf8(handle(&mut s, "/d.md", "").body).unwrap();
         assert!(with.contains("data-mermaid=\"1\""));
-        assert!(with.contains("mermaid"), "diagram source must be present for the client renderer");
+        assert!(
+            with.contains("mermaid"),
+            "diagram source must be present for the client renderer"
+        );
         let without = String::from_utf8(handle(&mut s, "/a.md", "").body).unwrap();
         assert!(!without.contains("data-mermaid=\"1\""));
     }

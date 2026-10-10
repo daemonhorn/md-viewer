@@ -48,9 +48,15 @@ mod imp {
 
 /// Try to hand `path` (or an empty line = just raise) to a running instance.
 pub fn forward(path: Option<&std::path::Path>) -> bool {
-    let Ok(mut s) = imp::connect() else { return false };
-    let line = path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-    s.write_all(line.as_bytes()).and_then(|_| s.write_all(b"\n")).is_ok()
+    let Ok(mut s) = imp::connect() else {
+        return false;
+    };
+    let line = path
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    s.write_all(line.as_bytes())
+        .and_then(|_| s.write_all(b"\n"))
+        .is_ok()
 }
 
 /// Start the listener thread; `on_open` is called with each forwarded path.
@@ -61,7 +67,11 @@ pub fn listen<F: Fn(Option<PathBuf>) + Send + 'static>(on_open: F) {
             let mut line = String::new();
             if BufReader::new(conn).take_line(&mut line) {
                 let t = line.trim_end_matches(['\n', '\r']);
-                on_open(if t.is_empty() { None } else { Some(PathBuf::from(t)) });
+                on_open(if t.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(t))
+                });
             }
         }
     });

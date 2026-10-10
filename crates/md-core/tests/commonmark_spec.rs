@@ -24,7 +24,10 @@ const MIN_PASS_RATE: f64 = 0.95;
 /// allowed-tag differences cancel out. What remains is parser behavior.
 fn expected_through_sanitizer(html: &str) -> String {
     let mut b = ammonia::Builder::default();
-    b.add_tags(["details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span", "div", "mark", "nav"]);
+    b.add_tags([
+        "details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span",
+        "div", "mark", "nav",
+    ]);
     b.add_generic_attributes(["id", "class", "align", "dir", "lang", "title"]);
     b.add_tag_attributes("input", ["type", "checked", "disabled"]);
     b.add_tag_attributes("code", ["data-math-style"]);
@@ -61,7 +64,11 @@ fn normalize(s: &str) -> String {
             prev_ws = false;
         }
     }
-    out.replace("> <", "><").replace("> ", ">").replace(" <", "<").trim().to_owned()
+    out.replace("> <", "><")
+        .replace("> ", ">")
+        .replace(" <", "<")
+        .trim()
+        .to_owned()
 }
 
 fn strip_heading_anchors(s: &str) -> String {
@@ -114,7 +121,8 @@ fn strip_heading_anchors(s: &str) -> String {
 #[test]
 fn commonmark_spec_conformance() {
     let path = common::fixtures_dir().join("commonmark/spec.json");
-    let examples: Vec<Example> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    let examples: Vec<Example> =
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let allow: BTreeSet<u32> = include_str!("commonmark_allowlist.txt")
         .lines()
         .map(|l| l.split('#').next().unwrap().trim())
@@ -138,7 +146,10 @@ fn commonmark_spec_conformance() {
     let total = examples.len();
     let passed = total - failed.len();
     let rate = passed as f64 / total as f64;
-    println!("CommonMark conformance: {passed}/{total} = {:.2}%", rate * 100.0);
+    println!(
+        "CommonMark conformance: {passed}/{total} = {:.2}%",
+        rate * 100.0
+    );
     for (s, (p, t)) in &by_section {
         if p != t {
             println!("  {s}: {p}/{t}");
@@ -152,8 +163,19 @@ fn commonmark_spec_conformance() {
     }
 
     let new: Vec<_> = failed.difference(&allow).collect();
-    assert!(new.is_empty(), "unexpected new conformance failures (not allowlisted): {new:?}");
+    assert!(
+        new.is_empty(),
+        "unexpected new conformance failures (not allowlisted): {new:?}"
+    );
     let stale: Vec<_> = allow.difference(&failed).collect();
-    assert!(stale.is_empty(), "allowlisted examples now pass; remove from allowlist: {stale:?}");
-    assert!(rate >= MIN_PASS_RATE, "pass rate {:.2}% below {:.0}%", rate * 100.0, MIN_PASS_RATE * 100.0);
+    assert!(
+        stale.is_empty(),
+        "allowlisted examples now pass; remove from allowlist: {stale:?}"
+    );
+    assert!(
+        rate >= MIN_PASS_RATE,
+        "pass rate {:.2}% below {:.0}%",
+        rate * 100.0,
+        MIN_PASS_RATE * 100.0
+    );
 }

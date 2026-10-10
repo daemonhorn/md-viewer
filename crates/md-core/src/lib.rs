@@ -50,7 +50,10 @@ fn options() -> Options<'static> {
 
 fn sanitizer() -> ammonia::Builder<'static> {
     let mut b = ammonia::Builder::default();
-    b.add_tags(["details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span", "div", "mark", "nav"]);
+    b.add_tags([
+        "details", "summary", "input", "section", "sup", "sub", "kbd", "picture", "source", "span",
+        "div", "mark", "nav",
+    ]);
     b.add_generic_attributes(["id", "class", "align", "dir", "lang", "title"]);
     b.add_tag_attributes("input", ["type", "checked", "disabled"]);
     b.add_tag_attributes("code", ["data-math-style"]);
@@ -67,7 +70,9 @@ fn sanitizer() -> ammonia::Builder<'static> {
     // `<input>` is only allowed as a (disabled) checkbox, for task lists.
     b.attribute_filter(|element, attr, value| {
         if element == "input" && attr == "type" {
-            return value.eq_ignore_ascii_case("checkbox").then(|| "checkbox".into());
+            return value
+                .eq_ignore_ascii_case("checkbox")
+                .then(|| "checkbox".into());
         }
         Some(value.into())
     });
@@ -101,9 +106,15 @@ fn drop_non_checkbox_inputs(html: String) -> String {
 fn split_front_matter(src: &str) -> (Option<String>, &str) {
     let s = src.strip_prefix('\u{feff}').unwrap_or(src);
     // YAML (`---`) or GitLab TOML (`+++`) front matter.
-    let (delim, rest) = if let Some(r) = s.strip_prefix("---\n").or_else(|| s.strip_prefix("---\r\n")) {
+    let (delim, rest) = if let Some(r) = s
+        .strip_prefix("---\n")
+        .or_else(|| s.strip_prefix("---\r\n"))
+    {
         ("---", r)
-    } else if let Some(r) = s.strip_prefix("+++\n").or_else(|| s.strip_prefix("+++\r\n")) {
+    } else if let Some(r) = s
+        .strip_prefix("+++\n")
+        .or_else(|| s.strip_prefix("+++\r\n"))
+    {
         ("+++", r)
     } else {
         return (None, s);
@@ -181,12 +192,20 @@ mod tests {
 
     #[test]
     fn input_restricted_to_checkbox() {
-        for src in ["<input type=text value=x>go", "<input>go", "<input type=\"password\" name=p>go", "<INPUT TYPE=file>go"] {
+        for src in [
+            "<input type=text value=x>go",
+            "<input>go",
+            "<input type=\"password\" name=p>go",
+            "<INPUT TYPE=file>go",
+        ] {
             let h = render(src).html;
             assert!(!h.contains("<input"), "{src:?} -> {h}");
         }
         let h = render("<input type=checkbox checked>").html;
-        assert!(h.contains("type=\"checkbox\"") && h.contains("disabled"), "{h}");
+        assert!(
+            h.contains("type=\"checkbox\"") && h.contains("disabled"),
+            "{h}"
+        );
         assert!(render("- [x] a\n").html.contains("<input"));
     }
 
@@ -195,7 +214,12 @@ mod tests {
         for marker in ["[[_TOC_]]", "[TOC]"] {
             let h = render(&format!("{marker}\n\n# A\n\n## B\n\n# A\n")).html;
             assert!(h.contains("<nav class=\"toc\">"), "{h}");
-            assert!(h.contains("<a href=\"#a\"") && h.contains("<a href=\"#b\"") && h.contains("<a href=\"#a-1\""), "{h}");
+            assert!(
+                h.contains("<a href=\"#a\"")
+                    && h.contains("<a href=\"#b\"")
+                    && h.contains("<a href=\"#a-1\""),
+                "{h}"
+            );
             assert!(h.contains("<ul><li><a href=\"#b\""), "nested: {h}");
             assert!(!h.contains("_TOC_"), "{h}");
         }
@@ -208,7 +232,10 @@ mod tests {
         let h = render("- [~] skip\n- [-] skip2\n- [ ] todo\n\n```\n- [~] code\n```\n").html;
         assert_eq!(h.matches("task-inapplicable").count(), 6, "{h}");
         assert!(h.contains("[~] code"));
-        assert!(h.contains("class=\"task-list-item-checkbox task-inapplicable\" disabled"), "{h}");
+        assert!(
+            h.contains("class=\"task-list-item-checkbox task-inapplicable\" disabled"),
+            "{h}"
+        );
     }
 
     #[test]
@@ -223,20 +250,36 @@ mod tests {
 
     #[test]
     fn obsidian_callouts() {
-        let h = render("> [!quote]+ Folded *title*\n> body\n\n> [!faq]-\n> x\n\n> [!note]\n> n\n").html;
-        assert!(h.contains("markdown-alert markdown-alert-quote") && h.contains(">Folded title<"), "{h}");
+        let h =
+            render("> [!quote]+ Folded *title*\n> body\n\n> [!faq]-\n> x\n\n> [!note]\n> n\n").html;
+        assert!(
+            h.contains("markdown-alert markdown-alert-quote") && h.contains(">Folded title<"),
+            "{h}"
+        );
         assert!(h.contains(">Faq<") && h.contains(">Note<"), "{h}");
         assert!(!h.contains(">+") && !h.contains(">-"), "{h}");
         let n = render("> [!a]\n> > [!b] inner\n> > t\n").html;
-        assert!(n.contains("markdown-alert-a") && n.contains("markdown-alert-b"), "{n}");
-        assert!(render("> [!x] <script>alert(1)</script>\n> y").html.contains("&lt;script") == false);
-        assert!(!render("> [!x] <script>alert(1)</script>\n> y").html.contains("<script"));
+        assert!(
+            n.contains("markdown-alert-a") && n.contains("markdown-alert-b"),
+            "{n}"
+        );
+        assert!(!render("> [!x] <script>alert(1)</script>\n> y")
+            .html
+            .contains("&lt;script"));
+        assert!(!render("> [!x] <script>alert(1)</script>\n> y")
+            .html
+            .contains("<script"));
     }
 
     #[test]
     fn obsidian_highlight_and_comments() {
-        let h = render("a ==hi== b %%secret%% c\n\n`==code== %%x%%`\n\n%%\nmulti\nline\n%%\nafter\n").html;
-        assert!(h.contains("<mark>hi</mark>") && !h.contains("secret") && !h.contains("multi"), "{h}");
+        let h =
+            render("a ==hi== b %%secret%% c\n\n`==code== %%x%%`\n\n%%\nmulti\nline\n%%\nafter\n")
+                .html;
+        assert!(
+            h.contains("<mark>hi</mark>") && !h.contains("secret") && !h.contains("multi"),
+            "{h}"
+        );
         assert!(h.contains("%%x%%") && h.contains("after"), "{h}");
         // an unterminated `%%` does not swallow the document
         let h = render("50%% off\n\nstill here\n").html;
@@ -258,10 +301,17 @@ mod tests {
 
     #[test]
     fn wikilinks_and_embeds_render() {
-        let h = render("[[Other Note|alias]] [[N#H]] ![[pic.png]] ![[pic.png|200]] ![[Some Note]]").html;
-        assert!(h.contains("href=\"Other%20Note.md\"") && h.contains(">alias<"), "{h}");
+        let h = render("[[Other Note|alias]] [[N#H]] ![[pic.png]] ![[pic.png|200]] ![[Some Note]]")
+            .html;
+        assert!(
+            h.contains("href=\"Other%20Note.md\"") && h.contains(">alias<"),
+            "{h}"
+        );
         assert!(h.contains("href=\"N.md#h\""), "{h}");
-        assert!(h.contains("<img src=\"pic.png\"") && h.contains("width=\"200\""), "{h}");
+        assert!(
+            h.contains("<img src=\"pic.png\"") && h.contains("width=\"200\""),
+            "{h}"
+        );
         assert!(h.contains("href=\"Some%20Note.md\""), "{h}");
         assert!(!render("`![[x.png]]`").html.contains("<img"));
     }

@@ -2,8 +2,8 @@
 //! [`SystemMime`] / [`SystemProbe`] touch external programs.
 
 use crate::{
-    decide_assoc, AssocDecision, DoctorReport, InstallOptions, Prompter, Report, Result,
-    Status, UninstallOptions, APP,
+    decide_assoc, AssocDecision, DoctorReport, InstallOptions, Prompter, Report, Result, Status,
+    UninstallOptions, APP,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -31,7 +31,9 @@ pub struct UnixEnv {
 
 fn abs_env(name: &str) -> Option<PathBuf> {
     // XDG spec: relative values are invalid and must be ignored.
-    std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute())
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
 }
 
 impl UnixEnv {
@@ -41,7 +43,7 @@ impl UnixEnv {
             .filter(|p| p.is_absolute())
             .ok_or_else(|| crate::Error("$HOME is not set".into()))?;
         let exe = std::env::current_exe()?;
-        Ok(Self::new(&home, &exe, |n| abs_env(n)))
+        Ok(Self::new(&home, &exe, abs_env))
     }
 
     /// `lookup` resolves XDG_DATA_HOME, XDG_CONFIG_HOME, XDG_BIN_HOME.
@@ -72,7 +74,8 @@ impl UnixEnv {
         self.mime_root().join("packages").join("md-viewer.xml")
     }
     pub fn icon(&self) -> PathBuf {
-        self.data_home.join("icons/hicolor/scalable/apps/md-viewer.svg")
+        self.data_home
+            .join("icons/hicolor/scalable/apps/md-viewer.svg")
     }
     pub fn state_dir(&self) -> PathBuf {
         self.data_home.join(APP)
@@ -151,7 +154,10 @@ impl MimeDb for SystemMime {
     }
     fn query_default(&self, mime: &str) -> Result<Option<String>> {
         if self.has_xdg_mime() {
-            let out = self.cmd("xdg-mime").args(["query", "default", mime]).output()?;
+            let out = self
+                .cmd("xdg-mime")
+                .args(["query", "default", mime])
+                .output()?;
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             return Ok(if s.is_empty() { None } else { Some(s) });
         }
@@ -162,7 +168,10 @@ impl MimeDb for SystemMime {
         if self.has_xdg_mime() {
             // xdg-mime fails if the config dir does not exist yet
             fs::create_dir_all(&self.config_home)?;
-            let st = self.cmd("xdg-mime").args(["default", desktop_id, mime]).status()?;
+            let st = self
+                .cmd("xdg-mime")
+                .args(["default", desktop_id, mime])
+                .status()?;
             if st.success() {
                 return Ok(());
             }
@@ -176,14 +185,26 @@ impl MimeDb for SystemMime {
     }
     fn refresh(&self) -> Vec<String> {
         let mut done = vec![];
-        if which("update-desktop-database", &std::env::var("PATH").unwrap_or_default()) {
-            let ok = self.cmd("update-desktop-database").arg(&self.apps_dir).status();
+        if which(
+            "update-desktop-database",
+            &std::env::var("PATH").unwrap_or_default(),
+        ) {
+            let ok = self
+                .cmd("update-desktop-database")
+                .arg(&self.apps_dir)
+                .status();
             if ok.map(|s| s.success()).unwrap_or(false) {
                 done.push("update-desktop-database".to_string());
             }
         }
-        if which("update-mime-database", &std::env::var("PATH").unwrap_or_default()) {
-            let ok = self.cmd("update-mime-database").arg(&self.mime_root).status();
+        if which(
+            "update-mime-database",
+            &std::env::var("PATH").unwrap_or_default(),
+        ) {
+            let ok = self
+                .cmd("update-mime-database")
+                .arg(&self.mime_root)
+                .status();
             if ok.map(|s| s.success()).unwrap_or(false) {
                 done.push("update-mime-database".to_string());
             }
@@ -211,7 +232,9 @@ pub fn which(cmd: &str, path_var: &str) -> bool {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                fs::metadata(&p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+                fs::metadata(&p)
+                    .map(|m| m.permissions().mode() & 0o111 != 0)
+                    .unwrap_or(false)
             }
             #[cfg(not(unix))]
             {
@@ -235,7 +258,11 @@ pub fn mimeapps_get(text: &str, mime: &str) -> Option<String> {
         } else if in_sec {
             if let Some((k, v)) = l.split_once('=') {
                 if k.trim() == mime {
-                    return v.split(';').map(str::trim).find(|s| !s.is_empty()).map(String::from);
+                    return v
+                        .split(';')
+                        .map(str::trim)
+                        .find(|s| !s.is_empty())
+                        .map(String::from);
                 }
             }
         }
@@ -251,7 +278,11 @@ pub fn mimeapps_unset(text: &str, mime: &str) -> String {
         let l = line.trim();
         if l.starts_with('[') {
             in_sec = l == DEFAULTS;
-        } else if in_sec && l.split_once('=').map(|(k, _)| k.trim() == mime).unwrap_or(false) {
+        } else if in_sec
+            && l.split_once('=')
+                .map(|(k, _)| k.trim() == mime)
+                .unwrap_or(false)
+        {
             continue;
         }
         out.push_str(line);
@@ -291,7 +322,11 @@ pub fn mimeapps_set(text: &str, mime: &str, desktop: &str) -> String {
 
 pub fn desktop_entry(bin: &Path) -> String {
     let exec = bin.to_string_lossy();
-    let exec = if exec.contains(' ') { format!("\"{exec}\"") } else { exec.into_owned() };
+    let exec = if exec.contains(' ') {
+        format!("\"{exec}\"")
+    } else {
+        exec.into_owned()
+    };
     format!(
         "[Desktop Entry]\nType=Application\nName=md-viewer\nGenericName=Markdown Viewer\n\
          Comment=Lightweight Markdown viewer\nExec={exec} %f\nIcon=md-viewer\n\
@@ -323,7 +358,10 @@ fn write_file(path: &Path, data: &[u8], exec: bool) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 }))?;
+        fs::set_permissions(
+            &tmp,
+            fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 }),
+        )?;
     }
     let _ = exec;
     fs::rename(&tmp, path)?;
@@ -391,9 +429,14 @@ pub fn install_with(
             r.act(format!("kept {current} as default Markdown handler"));
             r.note(format!("run `{APP} install --yes` later to switch"));
         }
-        AssocDecision::Set { prior, replaced_other } => {
+        AssocDecision::Set {
+            prior,
+            replaced_other,
+        } => {
             mime.set_default(MIMES[0], DESKTOP_ID)?;
-            state.prior_defaults.insert(MIMES[0].to_string(), prior.clone());
+            state
+                .prior_defaults
+                .insert(MIMES[0].to_string(), prior.clone());
             for m in &MIMES[1..] {
                 state_set(mime, &mut state, m, &mut r)?;
             }
@@ -405,7 +448,11 @@ pub fn install_with(
     }
 
     // 4. state
-    write_file(&env.state_file(), &serde_json::to_vec_pretty(&state)?, false)?;
+    write_file(
+        &env.state_file(),
+        &serde_json::to_vec_pretty(&state)?,
+        false,
+    )?;
     r.act(format!("recorded {}", env.state_file().display()));
 
     if !std::env::split_paths(&env.path_var).any(|p| p == env.bin_dir) {
@@ -444,7 +491,11 @@ pub fn uninstall_with(env: &UnixEnv, mime: &dyn MimeDb, opts: &UninstallOptions)
         if mime.query_default(m)?.as_deref() != Some(DESKTOP_ID) {
             continue; // someone else owns it now; leave it
         }
-        let prior = state.as_ref().and_then(|s| s.prior_defaults.get(m)).cloned().flatten();
+        let prior = state
+            .as_ref()
+            .and_then(|s| s.prior_defaults.get(m))
+            .cloned()
+            .flatten();
         match prior {
             Some(p) if !opts.no_restore => {
                 mime.set_default(m, &p)?;
@@ -457,7 +508,12 @@ pub fn uninstall_with(env: &UnixEnv, mime: &dyn MimeDb, opts: &UninstallOptions)
         }
     }
 
-    for p in [env.desktop_file(), env.mime_xml(), env.icon(), env.state_file()] {
+    for p in [
+        env.desktop_file(),
+        env.mime_xml(),
+        env.icon(),
+        env.state_file(),
+    ] {
         if p.exists() {
             fs::remove_file(&p)?;
             r.act(format!("removed {}", p.display()));
@@ -489,7 +545,9 @@ impl Probe for SystemProbe {
     }
     fn has_webkit(&self) -> bool {
         let ok = |c: &mut Command| {
-            c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            c.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
             c.status().map(|s| s.success()).unwrap_or(false)
         };
         if ok(Command::new("pkg-config").args(["--exists", "webkit2gtk-4.1"])) {
@@ -504,7 +562,11 @@ impl Probe for SystemProbe {
             }
         }
         // FreeBSD: ldconfig -r
-        if let Ok(o) = Command::new("ldconfig").arg("-r").stdin(Stdio::null()).output() {
+        if let Ok(o) = Command::new("ldconfig")
+            .arg("-r")
+            .stdin(Stdio::null())
+            .output()
+        {
             if String::from_utf8_lossy(&o.stdout).contains("webkit2gtk-4.1") {
                 return true;
             }
@@ -517,16 +579,35 @@ pub fn doctor_with(env: &UnixEnv, mime: &dyn MimeDb, probe: &dyn Probe) -> Docto
     let mut d = DoctorReport::default();
     let bin = env.bin();
     if bin.is_file() {
-        d.add("binary", Status::Ok, format!("installed at {}", bin.display()));
+        d.add(
+            "binary",
+            Status::Ok,
+            format!("installed at {}", bin.display()),
+        );
     } else {
-        d.add("binary", Status::Missing, format!("not installed at {}", bin.display()));
+        d.add(
+            "binary",
+            Status::Missing,
+            format!("not installed at {}", bin.display()),
+        );
     }
     if std::env::split_paths(&env.path_var).any(|p| p == env.bin_dir) {
-        d.add("path", Status::Ok, format!("{} is on PATH", env.bin_dir.display()));
+        d.add(
+            "path",
+            Status::Ok,
+            format!("{} is on PATH", env.bin_dir.display()),
+        );
     } else {
-        d.add("path", Status::Warn, format!("{} is not on PATH", env.bin_dir.display()));
+        d.add(
+            "path",
+            Status::Warn,
+            format!("{} is not on PATH", env.bin_dir.display()),
+        );
     }
-    for (name, p) in [("desktop-entry", env.desktop_file()), ("mime-package", env.mime_xml())] {
+    for (name, p) in [
+        ("desktop-entry", env.desktop_file()),
+        ("mime-package", env.mime_xml()),
+    ] {
         if p.is_file() {
             d.add(name, Status::Ok, p.display().to_string());
         } else {
@@ -534,26 +615,54 @@ pub fn doctor_with(env: &UnixEnv, mime: &dyn MimeDb, probe: &dyn Probe) -> Docto
         }
     }
     if load_state(env).is_some() {
-        d.add("install-record", Status::Ok, env.state_file().display().to_string());
+        d.add(
+            "install-record",
+            Status::Ok,
+            env.state_file().display().to_string(),
+        );
     } else {
-        d.add("install-record", Status::Warn, "no install.json (uninstall cannot restore a prior default)");
+        d.add(
+            "install-record",
+            Status::Warn,
+            "no install.json (uninstall cannot restore a prior default)",
+        );
     }
     if mime.has_xdg_mime() {
         d.add("xdg-mime", Status::Ok, "found");
     } else {
-        d.add("xdg-mime", Status::Warn, "not found (install xdg-utils); falling back to editing mimeapps.list");
+        d.add(
+            "xdg-mime",
+            Status::Warn,
+            "not found (install xdg-utils); falling back to editing mimeapps.list",
+        );
     }
     for t in ["update-desktop-database", "update-mime-database"] {
         if probe.has_command(t) {
             d.add(t, Status::Ok, "found");
         } else {
-            d.add(t, Status::Warn, "not found (optional; desktop may need re-login to notice changes)");
+            d.add(
+                t,
+                Status::Warn,
+                "not found (optional; desktop may need re-login to notice changes)",
+            );
         }
     }
     match mime.query_default(MIMES[0]) {
-        Ok(Some(c)) if c == DESKTOP_ID => d.add("association", Status::Ok, "md-viewer is the default for text/markdown"),
-        Ok(Some(c)) => d.add("association", Status::Warn, format!("default for text/markdown is {c}")),
-        Ok(None) => d.add("association", Status::Warn, "no default handler for text/markdown"),
+        Ok(Some(c)) if c == DESKTOP_ID => d.add(
+            "association",
+            Status::Ok,
+            "md-viewer is the default for text/markdown",
+        ),
+        Ok(Some(c)) => d.add(
+            "association",
+            Status::Warn,
+            format!("default for text/markdown is {c}"),
+        ),
+        Ok(None) => d.add(
+            "association",
+            Status::Warn,
+            "no default handler for text/markdown",
+        ),
         Err(e) => d.add("association", Status::Warn, format!("query failed: {e}")),
     }
     if probe.has_webkit() {
@@ -579,7 +688,10 @@ pub struct FakeMime {
 }
 impl FakeMime {
     pub fn with_default(mime: &str, app: &str) -> Self {
-        let f = FakeMime { xdg: true, ..Default::default() };
+        let f = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
         f.defaults.borrow_mut().insert(mime.into(), app.into());
         f
     }
@@ -640,7 +752,10 @@ mod tests {
             "XDG_CONFIG_HOME" => Some("/c".into()),
             _ => None,
         });
-        assert_eq!(e.desktop_file(), Path::new("/d/applications/md-viewer.desktop"));
+        assert_eq!(
+            e.desktop_file(),
+            Path::new("/d/applications/md-viewer.desktop")
+        );
         assert_eq!(e.mimeapps(), Path::new("/c/mimeapps.list"));
         assert_eq!(e.bin(), Path::new("/h/.local/bin/md-viewer"));
     }
@@ -648,7 +763,10 @@ mod tests {
     #[test]
     fn fresh_install() {
         let f = fixture();
-        let m = FakeMime { xdg: true, ..Default::default() };
+        let m = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
         let opts = InstallOptions::default();
         let r = install_with(&f.env, &m, &mut FixedPrompter(false), &opts).unwrap();
         assert!(!r.actions.is_empty());
@@ -656,17 +774,28 @@ mod tests {
         let de = fs::read_to_string(f.env.desktop_file()).unwrap();
         assert!(de.contains("MimeType=text/markdown;text/x-markdown;"));
         assert!(de.contains(&format!("Exec={} %f", f.env.bin().display())));
-        assert!(fs::read_to_string(f.env.mime_xml()).unwrap().contains("*.md"));
+        assert!(fs::read_to_string(f.env.mime_xml())
+            .unwrap()
+            .contains("*.md"));
         assert!(f.env.icon().is_file());
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some(DESKTOP_ID));
-        assert_eq!(m.query_default("text/x-markdown").unwrap().as_deref(), Some(DESKTOP_ID));
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some(DESKTOP_ID)
+        );
+        assert_eq!(
+            m.query_default("text/x-markdown").unwrap().as_deref(),
+            Some(DESKTOP_ID)
+        );
         let st = load_state(&f.env).unwrap();
         assert_eq!(st.prior_defaults["text/markdown"], None);
         assert!(*m.refreshed.borrow() >= 1);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(fs::metadata(f.env.bin()).unwrap().permissions().mode() & 0o777, 0o755);
+            assert_eq!(
+                fs::metadata(f.env.bin()).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
         }
     }
 
@@ -674,22 +803,46 @@ mod tests {
     fn idempotent_and_keeps_prior() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        let yes = InstallOptions { yes: true, ..Default::default() };
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
         install_with(&f.env, &m, &mut FixedPrompter(false), &yes).unwrap();
         // second run: no prompt needed, prior must survive
-        let r = install_with(&f.env, &m, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
+        let r = install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         assert!(r.actions.iter().any(|a| a.contains("already the default")));
         let st = load_state(&f.env).unwrap();
-        assert_eq!(st.prior_defaults["text/markdown"].as_deref(), Some("typora.desktop"));
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some(DESKTOP_ID));
+        assert_eq!(
+            st.prior_defaults["text/markdown"].as_deref(),
+            Some("typora.desktop")
+        );
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some(DESKTOP_ID)
+        );
     }
 
     #[test]
     fn conflict_declined() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        let r = install_with(&f.env, &m, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some("typora.desktop"));
+        let r = install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some("typora.desktop")
+        );
         assert!(r.actions.iter().any(|a| a.contains("kept typora.desktop")));
         assert!(f.env.bin().is_file()); // files still installed
         assert!(load_state(&f.env).unwrap().prior_defaults.is_empty());
@@ -699,17 +852,32 @@ mod tests {
     fn conflict_accepted_via_prompt() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        install_with(&f.env, &m, &mut FixedPrompter(true), &InstallOptions::default()).unwrap();
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some(DESKTOP_ID));
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(true),
+            &InstallOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some(DESKTOP_ID)
+        );
     }
 
     #[test]
     fn conflict_no_assoc() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        let o = InstallOptions { no_assoc: true, yes: true };
+        let o = InstallOptions {
+            no_assoc: true,
+            yes: true,
+        };
         install_with(&f.env, &m, &mut FixedPrompter(true), &o).unwrap();
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some("typora.desktop"));
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some("typora.desktop")
+        );
         assert_eq!(m.query_default("text/x-markdown").unwrap(), None);
     }
 
@@ -717,10 +885,16 @@ mod tests {
     fn uninstall_restores_prior() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        let yes = InstallOptions { yes: true, ..Default::default() };
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
         install_with(&f.env, &m, &mut FixedPrompter(false), &yes).unwrap();
         uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some("typora.desktop"));
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some("typora.desktop")
+        );
         assert_eq!(m.query_default("text/x-markdown").unwrap(), None);
         assert!(!f.env.bin().exists());
         assert!(!f.env.desktop_file().exists());
@@ -734,12 +908,24 @@ mod tests {
     #[test]
     fn uninstall_fresh_unsets_and_leaves_foreign_default() {
         let f = fixture();
-        let m = FakeMime { xdg: true, ..Default::default() };
-        install_with(&f.env, &m, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
+        let m = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         // user switches to another app afterwards: uninstall must not clobber
         m.set_default("text/markdown", "other.desktop").unwrap();
         uninstall_with(&f.env, &m, &UninstallOptions::default()).unwrap();
-        assert_eq!(m.query_default("text/markdown").unwrap().as_deref(), Some("other.desktop"));
+        assert_eq!(
+            m.query_default("text/markdown").unwrap().as_deref(),
+            Some("other.desktop")
+        );
         assert_eq!(m.query_default("text/x-markdown").unwrap(), None);
     }
 
@@ -747,7 +933,10 @@ mod tests {
     fn uninstall_no_restore() {
         let f = fixture();
         let m = FakeMime::with_default("text/markdown", "typora.desktop");
-        let yes = InstallOptions { yes: true, ..Default::default() };
+        let yes = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
         install_with(&f.env, &m, &mut FixedPrompter(false), &yes).unwrap();
         uninstall_with(&f.env, &m, &UninstallOptions { no_restore: true }).unwrap();
         assert_eq!(m.query_default("text/markdown").unwrap(), None);
@@ -756,7 +945,10 @@ mod tests {
     #[test]
     fn reinstall_over_existing_binary() {
         let f = fixture();
-        let m = FakeMime { xdg: true, ..Default::default() };
+        let m = FakeMime {
+            xdg: true,
+            ..Default::default()
+        };
         let o = InstallOptions::default();
         install_with(&f.env, &m, &mut FixedPrompter(false), &o).unwrap();
         // run "from" the installed binary itself: must not truncate it
@@ -769,29 +961,47 @@ mod tests {
     #[test]
     fn mimeapps_roundtrip() {
         let t = "[Added Associations]\ntext/markdown=a.desktop;\n\n[Default Applications]\ntext/html=b.desktop;\ntext/markdown=typora.desktop;x.desktop;\n";
-        assert_eq!(mimeapps_get(t, "text/markdown").as_deref(), Some("typora.desktop"));
+        assert_eq!(
+            mimeapps_get(t, "text/markdown").as_deref(),
+            Some("typora.desktop")
+        );
         assert_eq!(mimeapps_get(t, "text/plain"), None);
         let s = mimeapps_set(t, "text/markdown", DESKTOP_ID);
-        assert_eq!(mimeapps_get(&s, "text/markdown").as_deref(), Some(DESKTOP_ID));
+        assert_eq!(
+            mimeapps_get(&s, "text/markdown").as_deref(),
+            Some(DESKTOP_ID)
+        );
         assert!(s.contains("[Added Associations]\ntext/markdown=a.desktop;"));
         assert!(s.contains("text/html=b.desktop;"));
         let u = mimeapps_unset(&s, "text/markdown");
         assert_eq!(mimeapps_get(&u, "text/markdown"), None);
         assert!(u.contains("text/markdown=a.desktop;")); // other section kept
         let n = mimeapps_set("", "text/markdown", DESKTOP_ID);
-        assert_eq!(n, "[Default Applications]\ntext/markdown=md-viewer.desktop;\n");
+        assert_eq!(
+            n,
+            "[Default Applications]\ntext/markdown=md-viewer.desktop;\n"
+        );
     }
 
     #[test]
     fn doctor_states() {
         let f = fixture();
-        let m = FakeMime { xdg: false, ..Default::default() };
+        let m = FakeMime {
+            xdg: false,
+            ..Default::default()
+        };
         let d = doctor_with(&f.env, &m, &P(false));
         assert!(!d.healthy());
         assert_eq!(d.get("binary").unwrap().status, Status::Missing);
         assert_eq!(d.get("xdg-mime").unwrap().status, Status::Warn);
         assert_eq!(d.get("libwebkit2gtk-4.1").unwrap().status, Status::Missing);
-        install_with(&f.env, &m, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
+        install_with(
+            &f.env,
+            &m,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         let d = doctor_with(&f.env, &m, &P(true));
         assert!(d.healthy(), "{d}");
         assert_eq!(d.get("association").unwrap().status, Status::Ok);

@@ -55,7 +55,10 @@ impl WinEnv {
         let local_appdata = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .ok_or_else(|| crate::Error("%LOCALAPPDATA% is not set".into()))?;
-        Ok(WinEnv { local_appdata, exe: std::env::current_exe()? })
+        Ok(WinEnv {
+            local_appdata,
+            exe: std::env::current_exe()?,
+        })
     }
     pub fn install_dir(&self) -> PathBuf {
         self.local_appdata.join("Programs").join(APP)
@@ -83,34 +86,68 @@ pub struct State {
 /// One planned registry-level step.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    Set { key: String, name: String, value: String },
-    DeleteTree { key: String },
-    DeleteValue { key: String, name: String },
+    Set {
+        key: String,
+        name: String,
+        value: String,
+    },
+    DeleteTree {
+        key: String,
+    },
+    DeleteValue {
+        key: String,
+        name: String,
+    },
     PathAdd(String),
     PathRemove(String),
     OpenDefaultApps,
 }
 
 fn set(key: impl Into<String>, name: &str, value: impl Into<String>) -> Action {
-    Action::Set { key: key.into(), name: name.into(), value: value.into() }
+    Action::Set {
+        key: key.into(),
+        name: name.into(),
+        value: value.into(),
+    }
 }
 
 /// Pure planner: registry actions that register the app (and optionally the
 /// `.md` default) for the binary at `exe` (a Windows-style path string).
-pub fn plan_install(exe: &str, version: &str, set_default: bool, open_settings: bool) -> Vec<Action> {
+pub fn plan_install(
+    exe: &str,
+    version: &str,
+    set_default: bool,
+    open_settings: bool,
+) -> Vec<Action> {
     let cmd = format!("\"{exe}\" \"%1\"");
-    let dir = exe.rfind(['\\', '/']).map(|i| &exe[..i]).unwrap_or(exe).to_string();
+    let dir = exe
+        .rfind(['\\', '/'])
+        .map(|i| &exe[..i])
+        .unwrap_or(exe)
+        .to_string();
     let c = |s: &str| format!("{CLASSES}\\{s}");
     let mut a = vec![
         set(c(PROG_ID), "", "Markdown Document"),
-        set(c(&format!("{PROG_ID}\\DefaultIcon")), "", format!("\"{exe}\",0")),
-        set(c(&format!("{PROG_ID}\\shell\\open\\command")), "", cmd.clone()),
+        set(
+            c(&format!("{PROG_ID}\\DefaultIcon")),
+            "",
+            format!("\"{exe}\",0"),
+        ),
+        set(
+            c(&format!("{PROG_ID}\\shell\\open\\command")),
+            "",
+            cmd.clone(),
+        ),
         set(c(APP_KEY), "FriendlyAppName", "md-viewer"),
         set(c(&format!("{APP_KEY}\\SupportedTypes")), ".md", ""),
         set(c(&format!("{APP_KEY}\\shell\\open\\command")), "", cmd),
         set(c(".md\\OpenWithProgids"), PROG_ID, ""),
         set(CAPS, "ApplicationName", "md-viewer"),
-        set(CAPS, "ApplicationDescription", "Lightweight Markdown viewer"),
+        set(
+            CAPS,
+            "ApplicationDescription",
+            "Lightweight Markdown viewer",
+        ),
         set(format!("{CAPS}\\FileAssociations"), ".md", PROG_ID),
         set(REGAPPS, APP, CAPS),
         set(UNINSTALL, "DisplayName", "md-viewer"),
@@ -136,15 +173,28 @@ pub fn plan_uninstall(dir: &str, restore: Option<Option<String>>) -> Vec<Action>
     let mut a = vec![
         Action::DeleteTree { key: c(PROG_ID) },
         Action::DeleteTree { key: c(APP_KEY) },
-        Action::DeleteValue { key: c(".md\\OpenWithProgids"), name: PROG_ID.into() },
-        Action::DeleteTree { key: "Software\\md-viewer".into() },
-        Action::DeleteValue { key: REGAPPS.into(), name: APP.into() },
-        Action::DeleteTree { key: UNINSTALL.into() },
+        Action::DeleteValue {
+            key: c(".md\\OpenWithProgids"),
+            name: PROG_ID.into(),
+        },
+        Action::DeleteTree {
+            key: "Software\\md-viewer".into(),
+        },
+        Action::DeleteValue {
+            key: REGAPPS.into(),
+            name: APP.into(),
+        },
+        Action::DeleteTree {
+            key: UNINSTALL.into(),
+        },
         Action::PathRemove(dir.to_string()),
     ];
     match restore {
         Some(Some(p)) => a.push(set(c(".md"), "", p)),
-        Some(None) => a.push(Action::DeleteValue { key: c(".md"), name: "".into() }),
+        Some(None) => a.push(Action::DeleteValue {
+            key: c(".md"),
+            name: "".into(),
+        }),
         None => {}
     }
     a
@@ -179,7 +229,9 @@ pub fn apply(reg: &mut dyn Registry, actions: &[Action]) -> Result<()> {
             Action::DeleteTree { key } => reg.delete_tree(key)?,
             Action::DeleteValue { key, name } => reg.delete_value(key, name)?,
             Action::PathAdd(d) => {
-                let cur = reg.get_string(Hive::Cu, ENV_KEY, "Path")?.unwrap_or_default();
+                let cur = reg
+                    .get_string(Hive::Cu, ENV_KEY, "Path")?
+                    .unwrap_or_default();
                 let new = path_add(&cur, d);
                 if new != cur {
                     reg.set_expand_string(ENV_KEY, "Path", &new)?;
@@ -244,7 +296,10 @@ pub fn install_with(
     // With no UserChoice, a foreign Classes\.md default is also a conflict.
     let decision = match (&decision, uc.as_deref()) {
         (AssocDecision::Set { prior: None, .. }, None)
-            if classes_default.as_deref().map(|c| !c.is_empty() && c != PROG_ID).unwrap_or(false) =>
+            if classes_default
+                .as_deref()
+                .map(|c| !c.is_empty() && c != PROG_ID)
+                .unwrap_or(false) =>
         {
             decide_assoc(classes_default.as_deref(), &[PROG_ID], opts, prompter)
         }
@@ -264,7 +319,10 @@ pub fn install_with(
             r.act(format!("kept {current} as default for .md"));
             (false, false)
         }
-        AssocDecision::Set { prior, replaced_other } => {
+        AssocDecision::Set {
+            prior,
+            replaced_other,
+        } => {
             if !state.set_default {
                 state.prior_classes_default = classes_default.clone().filter(|c| c != PROG_ID);
             }
@@ -281,18 +339,29 @@ pub fn install_with(
     };
     state.path_added = true;
 
-    apply(reg, &plan_install(&winpath(&bin), &state.version, set_default, open_settings))?;
+    apply(
+        reg,
+        &plan_install(&winpath(&bin), &state.version, set_default, open_settings),
+    )?;
     r.act("wrote HKCU registration (ProgID, Applications, Capabilities, Uninstall) and PATH");
     r.note("open new terminals to see the updated PATH");
     fs::write(env.state_file(), serde_json::to_vec_pretty(&state)?)?;
     Ok(r)
 }
 
-pub fn uninstall_with(env: &WinEnv, reg: &mut dyn Registry, opts: &UninstallOptions) -> Result<Report> {
+pub fn uninstall_with(
+    env: &WinEnv,
+    reg: &mut dyn Registry,
+    opts: &UninstallOptions,
+) -> Result<Report> {
     let mut r = Report::default();
     let state = load_state(env);
     let installed = state.is_some() || env.bin().exists();
-    if !installed && reg.get_string(Hive::Cu, &format!("{CLASSES}\\{PROG_ID}"), "")?.is_none() {
+    if !installed
+        && reg
+            .get_string(Hive::Cu, &format!("{CLASSES}\\{PROG_ID}"), "")?
+            .is_none()
+    {
         r.note("md-viewer does not appear to be installed");
         return Ok(r);
     }
@@ -300,7 +369,11 @@ pub fn uninstall_with(env: &WinEnv, reg: &mut dyn Registry, opts: &UninstallOpti
     if let Some(s) = &state {
         let cur = reg.get_string(Hive::Cu, &format!("{CLASSES}\\.md"), "")?;
         if s.set_default && cur.as_deref() == Some(PROG_ID) {
-            restore = Some(if opts.no_restore { None } else { s.prior_classes_default.clone() });
+            restore = Some(if opts.no_restore {
+                None
+            } else {
+                s.prior_classes_default.clone()
+            });
         }
     }
     apply(reg, &plan_uninstall(&winpath(&env.install_dir()), restore))?;
@@ -313,7 +386,11 @@ pub fn uninstall_with(env: &WinEnv, reg: &mut dyn Registry, opts: &UninstallOpti
         let old = bin.with_extension("exe.old");
         let _ = fs::remove_file(&old);
         let _ = fs::rename(&bin, &old);
-        r.note(format!("{} is in use; delete {} manually if it remains", bin.display(), env.install_dir().display()));
+        r.note(format!(
+            "{} is in use; delete {} manually if it remains",
+            bin.display(),
+            env.install_dir().display()
+        ));
     } else {
         r.act(format!("removed {}", bin.display()));
     }
@@ -327,30 +404,73 @@ pub fn doctor_with(env: &WinEnv, reg: &dyn Registry) -> DoctorReport {
     if env.bin().is_file() {
         d.add("binary", Status::Ok, env.bin().display().to_string());
     } else {
-        d.add("binary", Status::Missing, format!("not installed at {}", env.bin().display()));
+        d.add(
+            "binary",
+            Status::Missing,
+            format!("not installed at {}", env.bin().display()),
+        );
     }
     let g = |k: &str, n: &str| reg.get_string(Hive::Cu, k, n).ok().flatten();
     if g(&format!("{CLASSES}\\{PROG_ID}\\shell\\open\\command"), "").is_some() {
         d.add("progid", Status::Ok, PROG_ID);
     } else {
-        d.add("progid", Status::Missing, "ProgID md-viewer.md is not registered");
+        d.add(
+            "progid",
+            Status::Missing,
+            "ProgID md-viewer.md is not registered",
+        );
     }
     if g(REGAPPS, APP).is_some() {
-        d.add("capabilities", Status::Ok, "registered in RegisteredApplications");
+        d.add(
+            "capabilities",
+            Status::Ok,
+            "registered in RegisteredApplications",
+        );
     } else {
-        d.add("capabilities", Status::Warn, "not in RegisteredApplications");
+        d.add(
+            "capabilities",
+            Status::Warn,
+            "not in RegisteredApplications",
+        );
     }
     let dir = winpath(&env.install_dir());
     let on_path = g(ENV_KEY, "Path")
-        .map(|p| p.split(';').any(|x| x.trim_end_matches('\\').eq_ignore_ascii_case(&dir)))
+        .map(|p| {
+            p.split(';')
+                .any(|x| x.trim_end_matches('\\').eq_ignore_ascii_case(&dir))
+        })
         .unwrap_or(false);
-    d.add("path", if on_path { Status::Ok } else { Status::Warn }, if on_path { "install dir is on user PATH" } else { "install dir is not on user PATH" });
+    d.add(
+        "path",
+        if on_path { Status::Ok } else { Status::Warn },
+        if on_path {
+            "install dir is on user PATH"
+        } else {
+            "install dir is not on user PATH"
+        },
+    );
     match g(USERCHOICE, "ProgId") {
-        Some(p) if p == PROG_ID || p == APP_KEY => d.add("association", Status::Ok, "md-viewer is the default for .md"),
-        Some(p) => d.add("association", Status::Warn, format!("default for .md is {p}; change it in Settings > Default apps")),
+        Some(p) if p == PROG_ID || p == APP_KEY => d.add(
+            "association",
+            Status::Ok,
+            "md-viewer is the default for .md",
+        ),
+        Some(p) => d.add(
+            "association",
+            Status::Warn,
+            format!("default for .md is {p}; change it in Settings > Default apps"),
+        ),
         None => match g(&format!("{CLASSES}\\.md"), "") {
-            Some(p) if p == PROG_ID => d.add("association", Status::Ok, "md-viewer is the default for .md"),
-            Some(p) => d.add("association", Status::Warn, format!("class default for .md is {p}")),
+            Some(p) if p == PROG_ID => d.add(
+                "association",
+                Status::Ok,
+                "md-viewer is the default for .md",
+            ),
+            Some(p) => d.add(
+                "association",
+                Status::Warn,
+                format!("class default for .md is {p}"),
+            ),
             None => d.add("association", Status::Warn, "no default handler for .md"),
         },
     }
@@ -389,7 +509,11 @@ mod real {
         })
     }
     fn nf(e: io::Error) -> Result<()> {
-        if e.kind() == io::ErrorKind::NotFound { Ok(()) } else { Err(e.into()) }
+        if e.kind() == io::ErrorKind::NotFound {
+            Ok(())
+        } else {
+            Err(e.into())
+        }
     }
 
     impl Registry for RealRegistry {
@@ -411,9 +535,19 @@ mod real {
         }
         fn set_expand_string(&mut self, key: &str, name: &str, value: &str) -> Result<()> {
             let (k, _) = hive(Hive::Cu).create_subkey(key)?;
-            let mut bytes: Vec<u8> = value.encode_utf16().chain(Some(0)).flat_map(|u| u.to_le_bytes()).collect();
+            let mut bytes: Vec<u8> = value
+                .encode_utf16()
+                .chain(Some(0))
+                .flat_map(|u| u.to_le_bytes())
+                .collect();
             bytes.shrink_to_fit();
-            k.set_raw_value(name, &RegValue { bytes: bytes.into(), vtype: REG_EXPAND_SZ })?;
+            k.set_raw_value(
+                name,
+                &RegValue {
+                    bytes: bytes.into(),
+                    vtype: REG_EXPAND_SZ,
+                },
+            )?;
             Ok(())
         }
         fn delete_value(&mut self, key: &str, name: &str) -> Result<()> {
@@ -428,7 +562,9 @@ mod real {
             Ok(())
         }
         fn open_default_apps(&mut self) -> Result<()> {
-            std::process::Command::new("cmd").args(["/C", "start", "", "ms-settings:defaultapps"]).status()?;
+            std::process::Command::new("cmd")
+                .args(["/C", "start", "", "ms-settings:defaultapps"])
+                .status()?;
             Ok(())
         }
     }
@@ -458,15 +594,25 @@ impl From<Hive> for Hive2 {
 }
 impl FakeRegistry {
     pub fn put(&mut self, h: Hive, key: &str, name: &str, v: &str) {
-        self.vals.entry((h.into(), key.to_ascii_lowercase())).or_default().insert(name.into(), v.into());
+        self.vals
+            .entry((h.into(), key.to_ascii_lowercase()))
+            .or_default()
+            .insert(name.into(), v.into());
     }
     pub fn get(&self, key: &str, name: &str) -> Option<String> {
-        self.vals.get(&(Hive2::Cu, key.to_ascii_lowercase()))?.get(name).cloned()
+        self.vals
+            .get(&(Hive2::Cu, key.to_ascii_lowercase()))?
+            .get(name)
+            .cloned()
     }
 }
 impl Registry for FakeRegistry {
     fn get_string(&self, h: Hive, key: &str, name: &str) -> Result<Option<String>> {
-        Ok(self.vals.get(&(h.into(), key.to_ascii_lowercase())).and_then(|m| m.get(name)).cloned())
+        Ok(self
+            .vals
+            .get(&(h.into(), key.to_ascii_lowercase()))
+            .and_then(|m| m.get(name))
+            .cloned())
     }
     fn set_string(&mut self, key: &str, name: &str, value: &str) -> Result<()> {
         self.put(Hive::Cu, key, name, value);
@@ -484,7 +630,8 @@ impl Registry for FakeRegistry {
     fn delete_tree(&mut self, key: &str) -> Result<()> {
         let k = key.to_ascii_lowercase();
         let pre = format!("{k}\\");
-        self.vals.retain(|(h, kk), _| !(*h == Hive2::Cu && (*kk == k || kk.starts_with(&pre))));
+        self.vals
+            .retain(|(h, kk), _| !(*h == Hive2::Cu && (*kk == k || kk.starts_with(&pre))));
         Ok(())
     }
     fn open_default_apps(&mut self) -> Result<()> {
@@ -502,7 +649,10 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         let exe = td.path().join("src.exe");
         fs::write(&exe, b"MZ").unwrap();
-        let env = WinEnv { local_appdata: td.path().join("Local"), exe };
+        let env = WinEnv {
+            local_appdata: td.path().join("Local"),
+            exe,
+        };
         (td, env)
     }
     const CMD: &str = "Software\\Classes\\md-viewer.md\\shell\\open\\command";
@@ -536,10 +686,19 @@ mod tests {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
         reg.put(Hive::Cu, ENV_KEY, "Path", "C:\\Tools");
-        install_with(&env, &mut reg, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         assert!(env.bin().is_file());
         assert!(reg.get(CMD, "").unwrap().contains("md-viewer.exe"));
-        assert_eq!(reg.get("Software\\Classes\\.md", "").as_deref(), Some(PROG_ID));
+        assert_eq!(
+            reg.get("Software\\Classes\\.md", "").as_deref(),
+            Some(PROG_ID)
+        );
         assert!(reg.get(ENV_KEY, "Path").unwrap().starts_with("C:\\Tools;"));
         assert_eq!(*reg.opened_settings.borrow(), 0);
         assert!(doctor_with(&env, &reg).get("association").unwrap().status == Status::Ok);
@@ -569,7 +728,13 @@ mod tests {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
         reg.put(Hive::Cu, USERCHOICE, "ProgId", PROG_ID);
-        let r = install_with(&env, &mut reg, &mut FixedPrompter(false), &InstallOptions::default()).unwrap();
+        let r = install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(false),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         assert!(r.actions.iter().any(|a| a.contains("already the default")));
         assert_eq!(reg.get("Software\\Classes\\.md", ""), None);
     }
@@ -579,10 +744,19 @@ mod tests {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
         reg.put(Hive::Cu, USERCHOICE, "ProgId", "Typora.md");
-        install_with(&env, &mut reg, &mut FixedPrompter(true), &InstallOptions::default()).unwrap();
+        install_with(
+            &env,
+            &mut reg,
+            &mut FixedPrompter(true),
+            &InstallOptions::default(),
+        )
+        .unwrap();
         assert_eq!(*reg.opened_settings.borrow(), 1);
         assert_eq!(reg.get(USERCHOICE, "ProgId").as_deref(), Some("Typora.md")); // never touched
-        assert_eq!(load_state(&env).unwrap().prior_user_choice.as_deref(), Some("Typora.md"));
+        assert_eq!(
+            load_state(&env).unwrap().prior_user_choice.as_deref(),
+            Some("Typora.md")
+        );
     }
 
     #[test]
@@ -590,14 +764,26 @@ mod tests {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
         reg.put(Hive::Cu, USERCHOICE, "ProgId", "Typora.md");
-        let o = InstallOptions { yes: true, ..Default::default() };
+        let o = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
         install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
         assert_eq!(*reg.opened_settings.borrow(), 1);
     }
 
     #[test]
     fn conflict_declined_and_no_assoc() {
-        for (o, ans) in [(InstallOptions::default(), false), (InstallOptions { no_assoc: true, yes: true }, true)] {
+        for (o, ans) in [
+            (InstallOptions::default(), false),
+            (
+                InstallOptions {
+                    no_assoc: true,
+                    yes: true,
+                },
+                true,
+            ),
+        ] {
             let (_t, env) = fixture();
             let mut reg = FakeRegistry::default();
             reg.put(Hive::Cu, USERCHOICE, "ProgId", "Typora.md");
@@ -613,19 +799,34 @@ mod tests {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
         reg.put(Hive::Cu, "Software\\Classes\\.md", "", "Other.md");
-        let o = InstallOptions { yes: true, ..Default::default() };
+        let o = InstallOptions {
+            yes: true,
+            ..Default::default()
+        };
         install_with(&env, &mut reg, &mut FixedPrompter(false), &o).unwrap();
-        assert_eq!(reg.get("Software\\Classes\\.md", "").as_deref(), Some(PROG_ID));
+        assert_eq!(
+            reg.get("Software\\Classes\\.md", "").as_deref(),
+            Some(PROG_ID)
+        );
         uninstall_with(&env, &mut reg, &UninstallOptions::default()).unwrap();
-        assert_eq!(reg.get("Software\\Classes\\.md", "").as_deref(), Some("Other.md"));
+        assert_eq!(
+            reg.get("Software\\Classes\\.md", "").as_deref(),
+            Some("Other.md")
+        );
     }
 
     #[test]
     fn doctor_webview() {
         let (_t, env) = fixture();
         let mut reg = FakeRegistry::default();
-        assert_eq!(doctor_with(&env, &reg).get("WebView2").unwrap().status, Status::Missing);
+        assert_eq!(
+            doctor_with(&env, &reg).get("WebView2").unwrap().status,
+            Status::Missing
+        );
         reg.put(Hive::Lm, WEBVIEW2_KEY, "pv", "120.0.1");
-        assert_eq!(doctor_with(&env, &reg).get("WebView2").unwrap().status, Status::Ok);
+        assert_eq!(
+            doctor_with(&env, &reg).get("WebView2").unwrap().status,
+            Status::Ok
+        );
     }
 }

@@ -107,7 +107,11 @@ pub struct DoctorReport {
 }
 impl DoctorReport {
     pub(crate) fn add(&mut self, name: &str, status: Status, detail: impl Into<String>) {
-        self.checks.push(Check { name: name.into(), status, detail: detail.into() });
+        self.checks.push(Check {
+            name: name.into(),
+            status,
+            detail: detail.into(),
+        });
     }
     /// True if nothing is `Missing`.
     pub fn healthy(&self) -> bool {
@@ -171,7 +175,10 @@ pub enum AssocDecision {
     /// md-viewer is already the default; nothing to change.
     AlreadyOurs,
     /// Make md-viewer the default. `prior` is the previous (foreign) default.
-    Set { prior: Option<String>, replaced_other: bool },
+    Set {
+        prior: Option<String>,
+        replaced_other: bool,
+    },
     /// A different app owns the association and the user said no.
     Declined { current: String },
 }
@@ -191,13 +198,21 @@ pub fn decide_assoc(
     }
     let current = current.map(str::trim).filter(|s| !s.is_empty());
     match current {
-        None => AssocDecision::Set { prior: None, replaced_other: false },
+        None => AssocDecision::Set {
+            prior: None,
+            replaced_other: false,
+        },
         Some(c) if ours.contains(&c) => AssocDecision::AlreadyOurs,
         Some(c) => {
             if opts.yes || prompter.confirm(&format!("Replace {c} with {APP}? [y/N]")) {
-                AssocDecision::Set { prior: Some(c.to_string()), replaced_other: true }
+                AssocDecision::Set {
+                    prior: Some(c.to_string()),
+                    replaced_other: true,
+                }
             } else {
-                AssocDecision::Declined { current: c.to_string() }
+                AssocDecision::Declined {
+                    current: c.to_string(),
+                }
             }
         }
     }
@@ -276,17 +291,46 @@ mod tests {
     #[test]
     fn decisions() {
         let o = InstallOptions::default();
-        assert_eq!(d(None, o, false), AssocDecision::Set { prior: None, replaced_other: false });
-        assert_eq!(d(Some("  "), o, false), AssocDecision::Set { prior: None, replaced_other: false });
-        assert_eq!(d(Some("md-viewer.desktop"), o, false), AssocDecision::AlreadyOurs);
+        assert_eq!(
+            d(None, o, false),
+            AssocDecision::Set {
+                prior: None,
+                replaced_other: false
+            }
+        );
+        assert_eq!(
+            d(Some("  "), o, false),
+            AssocDecision::Set {
+                prior: None,
+                replaced_other: false
+            }
+        );
+        assert_eq!(
+            d(Some("md-viewer.desktop"), o, false),
+            AssocDecision::AlreadyOurs
+        );
         assert_eq!(
             d(Some("x.desktop"), o, true),
-            AssocDecision::Set { prior: Some("x.desktop".into()), replaced_other: true }
+            AssocDecision::Set {
+                prior: Some("x.desktop".into()),
+                replaced_other: true
+            }
         );
-        assert_eq!(d(Some("x.desktop"), o, false), AssocDecision::Declined { current: "x.desktop".into() });
+        assert_eq!(
+            d(Some("x.desktop"), o, false),
+            AssocDecision::Declined {
+                current: "x.desktop".into()
+            }
+        );
         let yes = InstallOptions { yes: true, ..o };
-        assert!(matches!(d(Some("x.desktop"), yes, false), AssocDecision::Set { .. }));
-        let no = InstallOptions { no_assoc: true, ..o };
+        assert!(matches!(
+            d(Some("x.desktop"), yes, false),
+            AssocDecision::Set { .. }
+        ));
+        let no = InstallOptions {
+            no_assoc: true,
+            ..o
+        };
         assert_eq!(d(None, no, true), AssocDecision::Disabled);
         assert_eq!(d(Some("x.desktop"), no, true), AssocDecision::Disabled);
     }

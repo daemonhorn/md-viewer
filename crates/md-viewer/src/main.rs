@@ -24,7 +24,12 @@ const BASE: &str = "http://mdv.localhost";
 const BASE: &str = "mdv://localhost";
 
 #[derive(Parser)]
-#[command(name = "md-viewer", version, about = "Fast Markdown viewer", args_conflicts_with_subcommands = true)]
+#[command(
+    name = "md-viewer",
+    version,
+    about = "Fast Markdown viewer",
+    args_conflicts_with_subcommands = true
+)]
 struct Cli {
     /// Markdown file to open
     file: Option<PathBuf>,
@@ -77,14 +82,21 @@ fn locate(file: &Path) -> Option<(PathBuf, PathBuf)> {
     Some((f.parent()?.to_path_buf(), f))
 }
 
-fn make_watcher(proxy: EventLoopProxy<UserEvent>, state: Arc<Mutex<State>>, root: &Path) -> Option<notify::RecommendedWatcher> {
+fn make_watcher(
+    proxy: EventLoopProxy<UserEvent>,
+    state: Arc<Mutex<State>>,
+    root: &Path,
+) -> Option<notify::RecommendedWatcher> {
     let mut w = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(ev) = res else { return };
         if ev.kind.is_access() {
             return;
         }
         let cur = state.lock().ok().and_then(|s| s.current.clone());
-        let hit = ev.paths.iter().any(|p| serve::is_markdown(p) || Some(p) == cur.as_ref());
+        let hit = ev
+            .paths
+            .iter()
+            .any(|p| serve::is_markdown(p) || Some(p) == cur.as_ref());
         if hit {
             let _ = proxy.send_event(UserEvent::Reload);
         }
@@ -174,7 +186,11 @@ fn main() {
             let uri = req.uri();
             let reply = match st.lock() {
                 Ok(mut s) => serve::handle(&mut s, uri.path(), uri.query().unwrap_or("")),
-                Err(_) => serve::Reply { status: 500, mime: "text/plain", body: b"state poisoned".to_vec() },
+                Err(_) => serve::Reply {
+                    status: 500,
+                    mime: "text/plain",
+                    body: b"state poisoned".to_vec(),
+                },
             };
             Response::builder()
                 .status(reply.status)
@@ -188,13 +204,19 @@ fn main() {
             if url.starts_with(BASE) || url.starts_with("about:") {
                 return true;
             }
-            if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("mailto:") {
+            if url.starts_with("http://")
+                || url.starts_with("https://")
+                || url.starts_with("mailto:")
+            {
                 let _ = open::that_detached(&url);
             }
             false
         })
         .with_new_window_req_handler(|url, _| {
-            if url.starts_with("http://") || url.starts_with("https://") || url.starts_with("mailto:") {
+            if url.starts_with("http://")
+                || url.starts_with("https://")
+                || url.starts_with("mailto:")
+            {
                 let _ = open::that_detached(&url);
             }
             wry::NewWindowResponse::Deny
@@ -208,13 +230,27 @@ fn main() {
             true
         });
 
-    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    ))]
     let webview = {
         use tao::platform::unix::WindowExtUnix;
         use wry::WebViewBuilderExtUnix;
-        builder.build_gtk(window.default_vbox().expect("gtk vbox")).expect("webview")
+        builder
+            .build_gtk(window.default_vbox().expect("gtk vbox"))
+            .expect("webview")
     };
-    #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    )))]
     let webview = builder.build(&window).expect("webview");
 
     // Non-critical setup after the window exists.
@@ -231,14 +267,19 @@ fn main() {
     event_loop.run(move |event, _, flow| {
         *flow = ControlFlow::Wait;
         match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *flow = ControlFlow::Exit,
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *flow = ControlFlow::Exit,
             Event::UserEvent(UserEvent::Reload) => {
                 let _ = webview.evaluate_script("location.reload()");
             }
             Event::UserEvent(UserEvent::Open(p)) => {
                 window.set_minimized(false);
                 window.set_focus();
-                let Some((root, file)) = p.as_deref().and_then(locate) else { return };
+                let Some((root, file)) = p.as_deref().and_then(locate) else {
+                    return;
+                };
                 if let Ok(mut s) = state.lock() {
                     s.root = Some(root.clone());
                     s.current = Some(file.clone());
@@ -246,7 +287,10 @@ fn main() {
                 if let Some(u) = doc_url(&root, &file) {
                     let _ = webview.load_url(&u);
                 }
-                window.set_title(&format!("{} - md-viewer", file.file_name().unwrap_or_default().to_string_lossy()));
+                window.set_title(&format!(
+                    "{} - md-viewer",
+                    file.file_name().unwrap_or_default().to_string_lossy()
+                ));
                 watcher = make_watcher(proxy.clone(), state.clone(), &root);
             }
             _ => {}

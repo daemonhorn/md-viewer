@@ -8,11 +8,34 @@ fn html(s: &str) -> String {
 
 #[test]
 fn xss_fixture_has_no_active_content() {
-    let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/edge/xss.md")).unwrap();
+    let src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/edge/xss.md"
+    ))
+    .unwrap();
     let h = html(&src);
     for bad in [
-        "<script", "onerror", "onload", "onclick", "ontoggle", "javascript:", "data:text", "<iframe", "<object", "<embed",
-        "<svg", "<style", "<form", "<button", "<meta", "<base", "<link", "<math", "http-equiv", "position:fixed", "style=",
+        "<script",
+        "onerror",
+        "onload",
+        "onclick",
+        "ontoggle",
+        "javascript:",
+        "data:text",
+        "<iframe",
+        "<object",
+        "<embed",
+        "<svg",
+        "<style",
+        "<form",
+        "<button",
+        "<meta",
+        "<base",
+        "<link",
+        "<math",
+        "http-equiv",
+        "position:fixed",
+        "style=",
     ] {
         assert!(!h.contains(bad), "found {bad:?} in sanitized output:\n{h}");
     }
@@ -33,7 +56,10 @@ fn dangerous_url_schemes_removed() {
         "<https://x.com>\n\n[x]: javascript:alert(1)\n\n[x]",
     ] {
         let h = html(src);
-        assert!(!h.contains("javascript:") && !h.contains("vbscript:") && !h.contains("data:"), "{src:?} -> {h}");
+        assert!(
+            !h.contains("javascript:") && !h.contains("vbscript:") && !h.contains("data:"),
+            "{src:?} -> {h}"
+        );
     }
 }
 
@@ -47,14 +73,22 @@ fn event_handlers_and_style_removed() {
         "<input autofocus onfocus=alert(1)>",
     ] {
         let h = html(src);
-        assert!(!h.contains("onerror") && !h.contains("onmouseover") && !h.contains("ontoggle") && !h.contains("onfocus"), "{h}");
+        assert!(
+            !h.contains("onerror")
+                && !h.contains("onmouseover")
+                && !h.contains("ontoggle")
+                && !h.contains("onfocus"),
+            "{h}"
+        );
         assert!(!h.contains("style="), "{h}");
     }
 }
 
 #[test]
 fn comments_and_unclosed_tags_are_contained() {
-    let h = html("<!-- <script>alert(1)</script> -->\n\n<script\n\n<img src=\"x\" onerror=\"alert(1)\"");
+    let h = html(
+        "<!-- <script>alert(1)</script> -->\n\n<script\n\n<img src=\"x\" onerror=\"alert(1)\"",
+    );
     assert!(!h.contains("<script") && !h.contains("onerror=\""), "{h}");
 }
 
@@ -84,9 +118,18 @@ fn math_and_mermaid_do_not_enable_script() {
 
 #[test]
 fn only_checkbox_inputs_survive() {
-    for src in ["<input type=text>", "<input type=password name=p>", "<input type=file>", "<input type=\"image\" src=x>", "<input>"] {
+    for src in [
+        "<input type=text>",
+        "<input type=password name=p>",
+        "<input type=file>",
+        "<input type=\"image\" src=x>",
+        "<input>",
+    ] {
         assert!(!html(src).contains("<input"), "{src:?}");
     }
     let h = html("<input type=checkbox checked>");
-    assert!(h.contains("type=\"checkbox\"") && h.contains("disabled"), "{h}");
+    assert!(
+        h.contains("type=\"checkbox\"") && h.contains("disabled"),
+        "{h}"
+    );
 }

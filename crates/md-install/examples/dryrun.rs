@@ -15,10 +15,19 @@ fn main() {
     let env = UnixEnv::from_env().unwrap();
     assert!(env.bin().starts_with(&td));
     let mime = SystemMime::new(&env);
-    let opts = InstallOptions { yes: true, no_assoc: false };
-    println!("{}", install_with(&env, &mime, &mut FixedPrompter(false), &opts).unwrap());
+    let opts = InstallOptions {
+        yes: true,
+        no_assoc: false,
+    };
+    println!(
+        "{}",
+        install_with(&env, &mime, &mut FixedPrompter(false), &opts).unwrap()
+    );
     println!("{}", doctor_with(&env, &mime, &SystemProbe));
-    println!("{}", uninstall_with(&env, &mime, &UninstallOptions::default()).unwrap());
+    println!(
+        "{}",
+        uninstall_with(&env, &mime, &UninstallOptions::default()).unwrap()
+    );
     let _ = std::fs::remove_dir_all(&td);
 }
 #[cfg(not(unix))]
