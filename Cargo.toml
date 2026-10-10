@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/md-core", "crates/md-install", "crates/md-viewer"]
 
 [workspace.package]
-version = "0.1.0-beta1"
+version = "0.1.0-beta2"
 edition = "2021"
 rust-version = "1.88"
 license = "BSD-2-Clause"
