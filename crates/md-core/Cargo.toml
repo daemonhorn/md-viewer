@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 ammonia = "4.2.1"
-comrak = { version = "0.55.0", default-features = false, features = ["shortcodes"] }
+comrak = { version = "0.59.0", default-features = false, features = ["shortcodes"] }
 
 [dev-dependencies]
 insta = "1.49.0"
